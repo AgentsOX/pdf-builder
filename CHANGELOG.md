@@ -6,6 +6,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Distinct process exit codes per `error.kind` (`validation`=1, `typst_missing`=2,
+  `typst_compile`=3, `io`=4, `unknown`=5), so a shell or agent can branch on `$?`
+  without parsing output.
+- `pdf guide` now returns its own response **contract** — the `{ok,…}` envelope shape,
+  the error kinds, the exit codes, and the build-result keys — so an agent learns the
+  reply format from the same call it onboards with.
+
 ### Changed
 - **BREAKING:** `--json` build result keys are now camelCase, matching the manifest:
   `pdf_path` → `pdfPath`, `page_images` → `pageImages`. (Bumps the next release to 0.2.0.)
@@ -16,6 +24,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   values in `expected` — not only key typos as before.
 - Oversized `got` values in error issues are clamped to a compact preview, keeping the
   `--json` failure envelope small in an agent's context.
+- Missing required fields now read "Add the required field …" instead of the awkward
+  "Set … to a …".
+- Internal cleanup (no behavior change): shared `configBaseName`/`resolveFrom` helpers,
+  and named constants for output defaults, chart size, and suggestion thresholds.
 
 ### Docs
 - README rewritten in a plainer, less marketing-flavored voice.

@@ -1,5 +1,6 @@
-import { isAbsolute, resolve } from "node:path";
+import { resolve } from "node:path";
 import { deepMerge, isPlainObject } from "../util/merge.js";
+import { resolveFrom } from "../util/config-file.js";
 import { themeSearchDirs } from "./paths.js";
 import type { LoadedProfile } from "./load.js";
 
@@ -20,8 +21,8 @@ export interface ProfileApplication {
 export function applyProfile(spec: unknown, loaded: LoadedProfile): ProfileApplication {
   const { profile, dir } = loaded;
   const themesDir = [...new Set([resolve(dir, "..", "themes"), ...themeSearchDirs(), resolve("themes")])];
-  const fontPaths = (profile.fontPaths ?? []).map((p) => (isAbsolute(p) ? p : resolve(dir, p)));
-  const out = profile.out ? (isAbsolute(profile.out) ? profile.out : resolve(dir, profile.out)) : undefined;
+  const fontPaths = (profile.fontPaths ?? []).map((p) => resolveFrom(dir, p));
+  const out = profile.out ? resolveFrom(dir, profile.out) : undefined;
 
   // If the spec isn't an object, leave it for validation to reject.
   if (!isPlainObject(spec)) {

@@ -42,10 +42,15 @@ function levenshtein(a: string, b: string): number {
   return d[a.length][b.length];
 }
 
-/** Closest candidate within edit distance 2, or null. Used for both keys and values. */
+/** Only suggest a correction when it's within this many single-character edits. */
+const MAX_SUGGESTION_DISTANCE = 2;
+/** Serialized length of `got` beyond which we summarize it instead of inlining it. */
+const GOT_PREVIEW_LIMIT = 200;
+
+/** Closest candidate within MAX_SUGGESTION_DISTANCE edits, or null. Used for keys and values. */
 function closestAmong(word: string, candidates: readonly string[]): string | null {
   let best: string | null = null;
-  let bestD = 3;
+  let bestD = MAX_SUGGESTION_DISTANCE + 1;
   for (const c of candidates) {
     const dist = levenshtein(word.toLowerCase(), c.toLowerCase());
     if (dist < bestD) {
@@ -61,7 +66,7 @@ const closestKey = (key: string) => closestAmong(key, KNOWN_KEYS);
 /** Keep `got` small in the JSON envelope: summarize objects/arrays that serialize large. */
 function clip(value: unknown): unknown {
   if (value === null || typeof value !== "object") return value;
-  if (JSON.stringify(value).length <= 200) return value;
+  if (JSON.stringify(value).length <= GOT_PREVIEW_LIMIT) return value;
   if (Array.isArray(value)) return `[${value.length} items]`;
   const keys = Object.keys(value);
   return `{ ${keys.slice(0, 6).join(", ")}${keys.length > 6 ? ", …" : ""} }`;
@@ -122,7 +127,13 @@ function issueFromZod(issue: z.core.$ZodIssue, input: unknown): Issue {
     }
     case "invalid_type": {
       const expected = String((issue as z.core.$ZodIssueInvalidType).expected);
-      return { path, expected, got: clip(got), fix: `Set "${path}" to a ${expected}.` };
+      const article = /^[aeiou]/.test(expected) ? "an" : "a";
+      // A missing required field arrives as invalid_type with `got` undefined.
+      const fix =
+        got === undefined
+          ? `Add the required field "${path}" (${article} ${expected}).`
+          : `Set "${path}" to ${article} ${expected}.`;
+      return { path, expected, got: clip(got), fix };
     }
     case "too_small":
     case "too_big":

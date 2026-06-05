@@ -1,15 +1,23 @@
 import { readFileSync, existsSync } from "node:fs";
-import { isAbsolute, resolve, join } from "node:path";
+import { isAbsolute, resolve, join, basename } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { z } from "zod";
 import { formatZodError, SpecError } from "../spec/validate.js";
 import { InputError } from "../diagnostics.js";
 
 const CONFIG_EXTENSIONS = [".yaml", ".yml", ".json"];
+/** Matches a config file extension (.yaml/.yml/.json). */
+export const CONFIG_FILE_RE = /\.(ya?ml|json)$/i;
+
+/** Strip the directory and config extension from a path → the bare config name. */
+export const configBaseName = (file: string): string => basename(file).replace(CONFIG_FILE_RE, "");
+
+/** Resolve `p` against `baseDir` unless it's already absolute. */
+export const resolveFrom = (baseDir: string, p: string): string => (isAbsolute(p) ? p : resolve(baseDir, p));
 
 /** True when `name` is an explicit path (has a separator or a config extension). */
 function looksLikePath(name: string): boolean {
-  return name.includes("/") || /\.(ya?ml|json)$/i.test(name);
+  return name.includes("/") || CONFIG_FILE_RE.test(name);
 }
 
 /** Resolve a name to a config file: an explicit path, else the first match in `dirs`. */

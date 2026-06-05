@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
-import { join, dirname, basename } from "node:path";
+import { join, dirname } from "node:path";
 import { InputError } from "../diagnostics.js";
-import { findConfigFile, loadConfigFile } from "../util/config-file.js";
+import { findConfigFile, loadConfigFile, configBaseName, CONFIG_FILE_RE } from "../util/config-file.js";
 import { ProfileSchema, type Profile } from "./schema.js";
 import { globalConfigDir, localConfigDir, profileSearchDirs, configFiles } from "./paths.js";
 
@@ -37,10 +37,11 @@ export function listProfiles(): ProfileEntry[] {
   dirs.forEach((dir, i) => {
     if (!existsSync(dir)) return;
     for (const f of readdirSync(dir).sort()) {
-      const m = f.match(/^(.+)\.(ya?ml|json)$/i);
-      if (!m || seen.has(m[1])) continue;
-      seen.add(m[1]);
-      out.push({ name: m[1], scope: scopes[i], file: join(dir, f) });
+      if (!CONFIG_FILE_RE.test(f)) continue;
+      const name = configBaseName(f);
+      if (seen.has(name)) continue;
+      seen.add(name);
+      out.push({ name, scope: scopes[i], file: join(dir, f) });
     }
   });
   return out;
@@ -97,6 +98,4 @@ export const writeThemeFile = (name: string, yaml: string, opts: { global?: bool
   writeConfigFile("themes", name, yaml, opts);
 
 /** Strip a path/extension to a bare profile name (for `--profile ./x.yaml`). */
-export function profileNameOf(nameOrPath: string): string {
-  return basename(nameOrPath).replace(/\.(ya?ml|json)$/i, "");
-}
+export const profileNameOf = configBaseName;

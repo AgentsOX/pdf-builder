@@ -10,6 +10,8 @@ type HeaderBlock = Extract<Block, { type: "header" }>;
 type FooterBlock = Extract<Block, { type: "footer" }>;
 
 const MAX_DEPTH = 8;
+/** cetz plot canvas size (width, height) in cetz units — shared by line and bar charts. */
+const CHART_SIZE = "(12, 6)";
 
 interface Ctx {
   theme: ThemeTokens;
@@ -111,9 +113,9 @@ function emitBlock(block: Block, ctx: Ctx, path: string, depth: number): string 
       } else if (block.kind === "line") {
         const ticks = block.data.map((d, i) => `(${i}, [${emitInline(d.label, math)}])`).join(", ");
         const pts = block.data.map((d, i) => `(${i}, ${d.value})`).join(", ");
-        canvas = `cetz.canvas({ plot.plot(size: (12, 6), x-ticks: (${ticks},), y-min: 0, { plot.add((${pts},), mark: "o", style: (stroke: ${accent})) }) })`;
+        canvas = `cetz.canvas({ plot.plot(size: ${CHART_SIZE}, x-ticks: (${ticks},), y-min: 0, { plot.add((${pts},), mark: "o", style: (stroke: ${accent})) }) })`;
       } else {
-        canvas = `cetz.canvas({ chart.columnchart((${pairs},), size: (12, 6), bar-style: (fill: ${accent}, stroke: 0.5pt)) })`;
+        canvas = `cetz.canvas({ chart.columnchart((${pairs},), size: ${CHART_SIZE}, bar-style: (fill: ${accent}, stroke: 0.5pt)) })`;
       }
       return `${title}#align(center)[#${canvas}]`;
     }

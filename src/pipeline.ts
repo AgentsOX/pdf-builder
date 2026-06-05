@@ -68,6 +68,10 @@ export interface BuildResult {
   warnings: Issue[];
 }
 
+/** Default output directory and base filename when the spec/profile set neither. */
+const DEFAULT_OUT_DIR = "out";
+const DEFAULT_BASENAME = "document";
+
 const sha256 = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
 
 /** Deterministic JSON: object keys sorted recursively, so the hash is stable. */
@@ -243,9 +247,9 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
     }
   }
 
-  const outDir = resolve(eff.out ?? "out");
+  const outDir = resolve(eff.out ?? DEFAULT_OUT_DIR);
   mkdirSync(outDir, { recursive: true });
-  const base = eff.basename ?? "document";
+  const base = eff.basename ?? DEFAULT_BASENAME;
   const typPath = join(outDir, `${base}.typ`);
   const pdfPath = join(outDir, `${base}.pdf`);
   writeFileSync(typPath, rendered.typst, "utf8");

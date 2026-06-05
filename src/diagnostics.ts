@@ -17,3 +17,18 @@ export function classifyError(e: unknown): ErrorKind {
   if (e instanceof InputError) return "io";
   return "unknown";
 }
+
+/**
+ * A distinct process exit code per `ErrorKind`, so a shell or agent can branch on
+ * `$?` without parsing output. Kept in lockstep with `ErrorKind`.
+ */
+export const EXIT_CODES: Record<ErrorKind, number> = {
+  validation: 1,
+  typst_missing: 2,
+  typst_compile: 3,
+  io: 4,
+  unknown: 5,
+};
+
+/** The exit code for a thrown error, via its `ErrorKind`. */
+export const exitCodeFor = (e: unknown): number => EXIT_CODES[classifyError(e)];

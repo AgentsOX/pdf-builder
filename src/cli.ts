@@ -14,7 +14,7 @@ import { profileInitTemplate, themeInitTemplate } from "./profile/scaffold.js";
 import { runOnboard } from "./profile/onboard.js";
 import { profileSearchDirs, themeSearchDirs, fontCacheDirs } from "./profile/paths.js";
 import { addFonts, FONT_PACKS } from "./fonts.js";
-import { classifyError } from "./diagnostics.js";
+import { classifyError, exitCodeFor, EXIT_CODES } from "./diagnostics.js";
 import { readStructuredFile } from "./util/config-file.js";
 
 interface Flags {
@@ -54,9 +54,9 @@ const asString = (v: Flags[string]): string | undefined => (typeof v === "string
 /** A flag's value(s) as a string array (empty if unset). */
 const asList = (v: Flags[string]): string[] => (v === undefined ? [] : Array.isArray(v) ? v : [String(v)]);
 
-function fail(msg: string): never {
+function fail(msg: string, code = 1): never {
   process.stderr.write(msg + "\n");
-  process.exit(1);
+  process.exit(code);
 }
 
 const HELP = `pdf — declarative spec → PDF (Typst)
@@ -130,16 +130,16 @@ function errorObject(e: unknown): Record<string, unknown> {
   return o;
 }
 
-function printErrorHuman(e: unknown): never {
+function printErrorHuman(e: unknown, code: number): never {
   if (e instanceof SpecError) {
     process.stderr.write("Invalid spec:\n");
     for (const i of e.issues) {
       process.stderr.write(`  - ${i.path}: expected ${i.expected}, got ${JSON.stringify(i.got)}\n    fix: ${i.fix}\n`);
     }
-    process.exit(1);
+    process.exit(code);
   }
-  if (e instanceof TypstCompileError) fail(`Typst compile failed:\n${e.stderr}`);
-  fail((e as Error).message);
+  if (e instanceof TypstCompileError) fail(`Typst compile failed:\n${e.stderr}`, code);
+  fail((e as Error).message, code);
 }
 
 function printHumanResult(result: ReturnType<typeof build>) {
@@ -256,14 +256,13 @@ async function cmdFontsAdd(flags: Flags) {
 }
 
 function cmdSchema(flags: Flags) {
-  const json = JSON.stringify(specJsonSchema(), null, 2);
+  const schema = specJsonSchema();
   const dest = asString(flags.out);
   if (dest) {
-    writeFileSync(dest, json + "\n", "utf8");
-    process.stdout.write(`Wrote ${dest}\n`);
-  } else {
-    process.stdout.write(json + "\n");
+    writeFileSync(dest, JSON.stringify(schema, null, 2) + "\n", "utf8");
+    return flags.json ? printSuccess({ path: dest }) : void process.stdout.write(`Wrote ${dest}\n`);
   }
+  printJson(schema); // the schema is itself the JSON payload — emit it raw, not wrapped
 }
 
 // --- pdf guide: everything an agent needs, self-describing -------------------
@@ -320,6 +319,16 @@ const GUIDE_RECIPES = [
   },
 ];
 
+// The response contract, returned by `pdf guide` so an agent learns the shape
+// of every reply from the same call it onboards with.
+const GUIDE_CONTRACT = {
+  envelope: "Every command prints ONE JSON object on stdout under --json. Success: { ok: true, ...data }. Failure: { ok: false, error: { kind, message, issues? } }.",
+  errorKinds: Object.keys(EXIT_CODES),
+  exitCodes: EXIT_CODES,
+  issue: { path: "string", expected: "string", got: "any", fix: "string — how to correct it" },
+  buildResult: { pdfPath: "string", pageImages: "string[]", manifest: "object", warnings: "issue[]" },
+};
+
 const GUIDE_EXAMPLE = {
   theme: "default",
   blocks: [
@@ -362,6 +371,7 @@ function cmdGuide(flags: Flags) {
       profiles: { available: profiles, default: defaultProfile },
       paths,
       recipes: GUIDE_RECIPES,
+      contract: GUIDE_CONTRACT,
       example: GUIDE_EXAMPLE,
       schema: specJsonSchema(),
     });
@@ -390,7 +400,13 @@ function cmdGuide(flags: Flags) {
   GUIDE_RECIPES.forEach((r) => w(`  • ${r.name}\n      ${r.how}`));
   w("\nEXAMPLE (freeform spec)");
   w(toYaml(GUIDE_EXAMPLE).replace(/^/gm, "  "));
-  w("CONTRACT: `pdf schema` for the full JSON Schema. Every command accepts --json.");
+  w("\nCONTRACT");
+  w("  Every command prints one JSON object under --json:");
+  w("    success  { ok: true, ...data }");
+  w("    failure  { ok: false, error: { kind, message, issues? } }");
+  w(`  error.kind ∈ ${GUIDE_CONTRACT.errorKinds.join(" | ")}`);
+  w(`  exit codes: ${Object.entries(EXIT_CODES).map(([k, v]) => `${k}=${v}`).join(", ")}`);
+  w("  `pdf schema` prints the full JSON Schema.");
 }
 
 function cmdProfile(flags: Flags) {
@@ -496,11 +512,13 @@ async function main() {
     await dispatch(flags);
   } catch (e) {
     // One error path for every command: JSON envelope under --json, else prose.
+    // Exit code is per error.kind (see EXIT_CODES) so a shell/agent can branch on $?.
+    const code = exitCodeFor(e);
     if (flags.json) {
       printJson({ ok: false, error: errorObject(e) });
-      process.exit(1);
+      process.exit(code);
     }
-    printErrorHuman(e);
+    printErrorHuman(e, code);
   }
 }
 

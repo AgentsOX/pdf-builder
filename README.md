@@ -181,7 +181,7 @@ Every command accepts `--json` and prints one envelope, a discriminated union on
 { "ok": false, "error": { "kind": "validation", "message": "…", "issues": [ { "path", "expected", "got", "fix" } ] } }
 ```
 
-`error.kind` is one of `validation`, `typst_missing`, `typst_compile`, `io`, `unknown`, so an agent branches on it without matching strings.
+`error.kind` is one of `validation`, `typst_missing`, `typst_compile`, `io`, `unknown`, so an agent branches on it without matching strings. The process exit code matches the kind (`validation`=1, `typst_missing`=2, `typst_compile`=3, `io`=4, `unknown`=5), so a shell can branch on `$?` too. `pdf guide --json` returns this contract (envelope, kinds, exit codes, result keys) alongside the playbook.
 
 ## Library
 
