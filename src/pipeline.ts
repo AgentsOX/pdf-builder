@@ -1,6 +1,6 @@
-import { fileURLToPath } from "node:url";
-import { dirname, resolve, join } from "node:path";
-import { mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
+import { resolve, join } from "node:path";
+import { mkdirSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
+import { bundledFontsDir, vendorPackagesDir } from "./paths.js";
 import type { Block } from "./spec/schema.js";
 import { parseSpec, parseData, type Issue } from "./spec/validate.js";
 import { getTemplate } from "./templates/index.js";
@@ -14,7 +14,6 @@ import {
   filterTypstStderr,
   listFontFamilies,
   TypstMissingError,
-  TypstCompileError,
 } from "./typst.js";
 
 export interface BuildOptions {
@@ -52,8 +51,6 @@ export interface BuildResult {
   manifest: Manifest;
   warnings: Issue[];
 }
-
-const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 function parseTypstStderr(stderr: string): Issue[] {
   return filterTypstStderr(stderr)
@@ -119,8 +116,8 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
   if (!typst) throw new TypstMissingError();
   warnings.push(...versionWarnings(typst));
 
-  const fontPaths = [join(packageRoot, "fonts"), ...(opts.fontPaths ?? []).map((p) => resolve(p))];
-  const packagePath = join(packageRoot, "vendor", "typst-packages");
+  const fontPaths = [bundledFontsDir, ...(opts.fontPaths ?? []).map((p) => resolve(p))];
+  const packagePath = vendorPackagesDir;
 
   // Font-availability check (matches the render's --ignore-system-fonts behavior).
   const families = new Set(listFontFamilies(typst.bin, fontPaths).map((f) => f.toLowerCase()));
@@ -144,16 +141,10 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
   const pdfPath = join(outDir, `${base}.pdf`);
   writeFileSync(typPath, compiled.typst, "utf8");
 
-  try {
-    const { stderr } = compileToPdf({ bin: typst.bin, input: typPath, output: pdfPath, root, fontPaths, packagePath });
-    warnings.push(...parseTypstStderr(stderr));
-  } catch (e) {
-    if (e instanceof TypstCompileError) {
-      // Loud, agent-fixable — never a silent blank PDF.
-      throw new TypstCompileError(e.stderr);
-    }
-    throw e;
-  }
+  // compileToPdf throws TypstCompileError on failure — propagated to the caller
+  // (CLI prints stderr). Never a silent blank PDF.
+  const { stderr } = compileToPdf({ bin: typst.bin, input: typPath, output: pdfPath, root, fontPaths, packagePath });
+  warnings.push(...parseTypstStderr(stderr));
 
   // Per-page PNGs for the visual feedback loop.
   let pageImages: string[] = [];

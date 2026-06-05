@@ -77,6 +77,14 @@ describe("compileDocument", () => {
     expect(typst).toContain('#callout("definition"');
   });
 
+  it("escapes special characters in a callout title (no raw string literal)", () => {
+    const { typst } = compile([
+      { type: "callout", kind: "note", title: 'A # "B"', body: [{ type: "text", text: "x" }] },
+    ]);
+    expect(typst).toContain("\\#"); // hash escaped as content, not raw
+    expect(typst).not.toContain('"A # "B""'); // not splatted into a string literal
+  });
+
   it("emits a real cetz chart and imports cetz", () => {
     const { typst } = compile([{ type: "chart", kind: "bar", data: [{ label: "Jan", value: 1 }] }]);
     expect(typst).toContain("cetz.canvas");

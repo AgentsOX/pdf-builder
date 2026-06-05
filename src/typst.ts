@@ -36,16 +36,21 @@ function probe(bin: string): string | null {
   return null;
 }
 
-/** Resolve the Typst binary: env override first, then PATH. */
+let resolvedTypst: TypstInfo | null | undefined;
+
+/** Resolve the Typst binary: env override first, then PATH. Memoized per process. */
 export function resolveTypst(): TypstInfo | null {
-  const candidates = process.env.PDF_BUILDER_TYPST
-    ? [process.env.PDF_BUILDER_TYPST]
-    : ["typst"];
+  if (resolvedTypst !== undefined) return resolvedTypst;
+  const candidates = process.env.PDF_BUILDER_TYPST ? [process.env.PDF_BUILDER_TYPST] : ["typst"];
+  resolvedTypst = null;
   for (const bin of candidates) {
     const out = probe(bin);
-    if (out) return { bin, version: out };
+    if (out) {
+      resolvedTypst = { bin, version: out };
+      break;
+    }
   }
-  return null;
+  return resolvedTypst;
 }
 
 export function hasTypst(): boolean {
@@ -114,12 +119,15 @@ export class TypstCompileError extends Error {
   }
 }
 
+/** Default PNG resolution for the visual-feedback rasterization. */
+export const DEFAULT_PNG_PPI = 144;
+
 export function compileToPdf(opts: Omit<RunOpts, "ppi">): { stderr: string } {
   return run(opts);
 }
 
 export function compileToPng(opts: RunOpts): { stderr: string } {
-  return run({ ppi: 144, ...opts });
+  return run({ ...opts, ppi: opts.ppi ?? DEFAULT_PNG_PPI });
 }
 
 /** List font families Typst can see (bundled + given dirs). For `pdf fonts`. */

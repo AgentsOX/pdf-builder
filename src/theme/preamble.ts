@@ -1,29 +1,20 @@
 import type { Block, MathSyntax } from "../spec/schema.js";
-import { emitInline } from "../compiler/escape.js";
+import { emitInline, rgb, strLit } from "../compiler/escape.js";
 import type { ThemeTokens } from "./types.js";
 
 type HeaderBlock = Extract<Block, { type: "header" }>;
 type FooterBlock = Extract<Block, { type: "footer" }>;
 
-/** Import line for the vendored mitex (LaTeX → Typst math) package. */
-export const MITEX_IMPORT = '#import "@preview/mitex:0.2.5": mi, mitex';
-
-/** Import lines for the vendored cetz chart packages. */
-export const CETZ_IMPORT =
-  '#import "@preview/cetz:0.4.2"\n#import "@preview/cetz-plot:0.1.3": chart, plot';
-
 /** Bundled Hebrew fallback face, appended to every font list for RTL coverage. */
 const HEBREW_FALLBACK = "David Libre";
 
-const rgb = (hex: string) => `rgb("${hex}")`;
-
 /** A Typst font tuple with the Hebrew fallback appended. */
-const fontList = (primary: string) => `("${primary}", "${HEBREW_FALLBACK}")`;
+const fontList = (primary: string) => `(${strLit(primary)}, ${strLit(HEBREW_FALLBACK)})`;
 
 function headerContent(t: ThemeTokens, h: HeaderBlock, math: MathSyntax): string {
   const bits: string[] = [];
   const logo = h.logo ?? t.logo;
-  if (logo) bits.push(`image("${logo}", height: 1.2em)`);
+  if (logo) bits.push(`image(${strLit(logo)}, height: 1.2em)`);
   if (h.text) bits.push(`text(weight: "bold")[${emitInline(h.text, math)}]`);
   const inner = bits.length === 2 ? `#${bits[0]} #h(1fr) #${bits[1]}` : bits.length ? `#${bits[0]}` : "";
   return `[#set text(size: ${t.size.small}, fill: ${rgb(t.color.muted)})\n${inner}\n#v(0.2em)\n#line(length: 100%, stroke: 0.5pt + ${rgb(t.color.border)})]`;
@@ -80,7 +71,7 @@ export function themePreamble(
 #show heading.where(level: 2): set text(size: ${t.size.h2})
 #show heading.where(level: 3): set text(size: ${t.size.h3})
 #show heading.where(level: 4): set text(size: ${t.size.h4})
-#show raw: set text(font: ("${t.fonts.mono}"))
+#show raw: set text(font: ${fontList(t.fonts.mono)})
 #set table(stroke: 0.5pt + ${rgb(t.color.border)}, inset: ${t.space.inset}, align: left + horizon)
 #show table.cell.where(y: 0): set text(weight: "bold")
 

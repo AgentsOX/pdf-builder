@@ -22,6 +22,11 @@ export function strLit(s: string): string {
   return '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
 }
 
+/** A Typst rgb() color from a hex string. */
+export function rgb(hex: string): string {
+  return `rgb(${strLit(hex)})`;
+}
+
 /**
  * Wrap a LaTeX/Typst-math source string as a Typst argument. Prefer a raw
  * (backtick) literal so LaTeX backslashes need no escaping; fall back to a

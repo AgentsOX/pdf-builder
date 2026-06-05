@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync } from "node:fs";
-import { basename, extname, join } from "node:path";
+import { basename, extname } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { bundledFontsDir } from "./paths.js";
 import { build } from "./pipeline.js";
 import { listThemes } from "./theme/index.js";
 import { listTemplates } from "./templates/index.js";
@@ -14,6 +15,10 @@ interface Flags {
   [k: string]: string | boolean | string[];
 }
 
+// Flags that never take a value, so a following positional isn't swallowed
+// (e.g. `pdf build --png file.yaml`).
+const BOOLEAN_FLAGS = new Set(["png", "strict", "help"]);
+
 /** Repeated flags accumulate into arrays (e.g. multiple --font-path). */
 function parseArgs(argv: string[]): Flags {
   const flags: Flags = { _: [] };
@@ -22,7 +27,8 @@ function parseArgs(argv: string[]): Flags {
     if (a.startsWith("--")) {
       const key = a.slice(2);
       const next = argv[i + 1];
-      const val = next === undefined || next.startsWith("--") ? true : (i++, next);
+      const takesValue = !BOOLEAN_FLAGS.has(key) && next !== undefined && !next.startsWith("--");
+      const val: string | boolean = takesValue ? (i++, next) : true;
       const prev = flags[key];
       if (prev === undefined) flags[key] = val;
       else if (Array.isArray(prev)) prev.push(String(val));
@@ -179,7 +185,7 @@ function cmdThemeInit(flags: Flags) {
 function cmdFonts(flags: Flags) {
   const typst = resolveTypst();
   if (!typst) fail(new TypstMissingError().message);
-  const fams = listFontFamilies(typst.bin, [join(import.meta.dirname, "..", "fonts"), ...multi(flags["font-path"])]);
+  const fams = listFontFamilies(typst.bin, [bundledFontsDir, ...multi(flags["font-path"])]);
   if (!fams.length) fail("No fonts found.");
   for (const f of fams) process.stdout.write(f + "\n");
 }

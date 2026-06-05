@@ -1,11 +1,10 @@
 import type { Block, MathSyntax } from "../spec/schema.js";
 import type { ThemeTokens } from "../theme/types.js";
-import { themePreamble, MITEX_IMPORT, CETZ_IMPORT } from "../theme/preamble.js";
+import { themePreamble } from "../theme/preamble.js";
+import { MITEX_IMPORT, CETZ_IMPORT } from "../packages.js";
 import type { Issue } from "../spec/validate.js";
-import { emitInline, displayMath, hasInlineMath, strLit } from "./escape.js";
+import { emitInline, displayMath, hasInlineMath, strLit, rgb } from "./escape.js";
 import { resolveAsset } from "./assets.js";
-
-const rgb = (hex: string) => `rgb("${hex}")`;
 
 type HeaderBlock = Extract<Block, { type: "header" }>;
 type FooterBlock = Extract<Block, { type: "footer" }>;
@@ -118,7 +117,14 @@ function emitBlock(block: Block, ctx: Ctx, path: string, depth: number): string 
       let src = block.src;
       if (ctx.assetBase) {
         const a = resolveAsset(src, ctx.assetBase);
-        if (!a.exists) {
+        if (a.outsideRoot) {
+          ctx.warnings.push({
+            path: `${path}.src`,
+            expected: `a path under the root (${ctx.assetBase})`,
+            got: block.src,
+            fix: "Move the image under the working directory, or run from a directory that contains it.",
+          });
+        } else if (!a.exists) {
           ctx.warnings.push({
             path: `${path}.src`,
             expected: "an existing image file",
@@ -145,9 +151,11 @@ function emitBlock(block: Block, ctx: Ctx, path: string, depth: number): string 
     }
 
     case "callout": {
-      const title = block.title ? `"${block.title.replace(/"/g, '\\"')}"` : "none";
+      // Title goes through emitInline (escaped + math-aware) as content, like
+      // every other user-text field — never raw into a string literal.
+      const title = block.title ? `[${emitInline(block.title, math)}]` : "none";
       const body = emitBlocks(block.body, ctx, `${path}.body`, depth + 1);
-      return `#callout("${block.kind}", ${title}, [${body}])`;
+      return `#callout(${strLit(block.kind)}, ${title}, [${body}])`;
     }
 
     case "spacer":
@@ -243,7 +251,14 @@ export function compileDocument(blocks: Block[], theme: ThemeTokens, opts: Compi
     const rawLogo = header.logo ?? theme.logo;
     if (rawLogo) {
       const a = resolveAsset(rawLogo, opts.assetBase);
-      if (!a.exists) {
+      if (a.outsideRoot) {
+        ctx.warnings.push({
+          path: "header.logo",
+          expected: `a path under the root (${opts.assetBase})`,
+          got: rawLogo,
+          fix: "Move the logo under the working directory, or run from a directory that contains it.",
+        });
+      } else if (!a.exists) {
         ctx.warnings.push({
           path: "header.logo",
           expected: "an existing logo file",
