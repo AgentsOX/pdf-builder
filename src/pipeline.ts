@@ -2,6 +2,7 @@ import { resolve, join } from "node:path";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { bundledFontsDir, vendorPackagesDir } from "./paths.js";
+import { fontCacheDirs } from "./profile/paths.js";
 import type { Block, Spec } from "./spec/schema.js";
 import { SCHEMA_VERSION } from "./spec/schema.js";
 import { parseSpec, parseData, SpecError, type Issue } from "./spec/validate.js";
@@ -224,7 +225,7 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
   assertTypstVersion(typst);
 
   const root = resolve(eff.root ?? process.cwd());
-  const fontPaths = [bundledFontsDir, ...(eff.fontPaths ?? []).map((p) => resolve(p))];
+  const fontPaths = [bundledFontsDir, ...fontCacheDirs(), ...(eff.fontPaths ?? []).map((p) => resolve(p))];
   const packagePath = vendorPackagesDir;
 
   // Font-availability check (matches the render's --ignore-system-fonts behavior).

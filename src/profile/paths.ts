@@ -34,3 +34,13 @@ export function themeSearchDirs(): string[] {
 export function configFiles(): string[] {
   return configRoots().map((d) => join(d, "config.json"));
 }
+
+/** Dirs where on-demand fonts (`pdf fonts add`) are cached; on the build font-path. */
+export function fontCacheDirs(): string[] {
+  return configRoots().map((d) => join(d, "fonts"));
+}
+
+/** The single dir `pdf fonts add` writes into (global by default). */
+export function fontCacheDir(global = true): string {
+  return join(global ? globalConfigDir() : localConfigDir(), "fonts");
+}

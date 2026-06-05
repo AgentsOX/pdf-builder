@@ -1,25 +1,33 @@
 # Fonts
 
-These fonts are **bundled and shipped** so output is self-contained and
-deterministic — it does not depend on whatever fonts the Typst binary happens to
-embed. The build passes this directory via `--font-path` with
-`--ignore-system-fonts`, so only these (and Typst's built-ins) are used.
+Kept deliberately small. The built-in `default` and `study` themes use fonts the
+**Typst engine already embeds** (Libertinus Serif, New Computer Modern + Math,
+DejaVu Sans Mono), so they render offline with nothing bundled here. The only
+font shipped is the one Typst does *not* embed:
 
 | Family | Files | Used by | License |
 |---|---|---|---|
-| Libertinus Serif | `LibertinusSerif-{Regular,Bold,Italic}.otf` | `default` theme | OFL (`LibertinusSerif-OFL.txt`) |
-| New Computer Modern | `NewCM10-{Regular,Bold,Italic}.otf`, `NewCMMath-Regular.otf` | `study` theme + math | GUST FL (`NewComputerModern-GUST-LICENSE.txt`) |
-| DejaVu Sans Mono | `DejaVuSansMono{,-Bold}.ttf` | code/mono in both themes | Bitstream Vera / public-domain-ish (`DejaVuSansMono-LICENSE.txt`) |
-| David Libre | `DavidLibre-{Regular,Bold}.ttf` | Hebrew/RTL fallback | OFL (`DavidLibre-OFL.txt`) |
+| David Libre | `DavidLibre-{Regular,Bold}.ttf` | Hebrew / RTL fallback | OFL (`DavidLibre-OFL.txt`) |
 
-All are SIL OFL / GUST / permissive — safe to redistribute. License files sit
-alongside each face.
+The build passes this directory (and the on-demand cache, below) via
+`--font-path` with `--ignore-system-fonts`, so output is reproducible.
 
-## Adding your own font
+## Add fonts on demand (no 5 MB bundle)
 
-1. Drop the `.ttf` / `.otf` into this directory (or any dir you pass with
-   `--font-path`, which is additive to this one).
-2. Reference the family name in a theme (`src/theme/*.ts` or a theme file).
-3. `pdf fonts` lists every family Typst can currently see.
+Instead of shipping every font, download only what you need — they're cached and
+auto-added to the font path:
 
-Only ship fonts whose license permits redistribution, and include their license.
+```bash
+pdf fonts add cm                  # a curated pack (New Computer Modern)
+pdf fonts add https://…/Brand.otf # any direct .ttf/.otf URL (brand/extra language)
+pdf fonts add cm --local          # into ./.pdfbuilder/fonts instead of global
+pdf fonts                         # list everything Typst can now see
+```
+
+Cache: `~/.config/pdf-builder/fonts` (global) or `./.pdfbuilder/fonts` (local).
+
+## Add a font manually
+
+Drop a `.ttf` / `.otf` into this directory or any `--font-path` dir, then
+reference its family name in a theme. Only ship fonts whose license permits
+redistribution, with their license file alongside.

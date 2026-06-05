@@ -12,7 +12,8 @@ import { resolveTypst, listFontFamilies, TypstMissingError, TypstCompileError } 
 import { loadProfile, listProfiles, getDefaultProfile, setDefaultProfile, writeProfile } from "./profile/load.js";
 import { profileInitTemplate, themeInitTemplate } from "./profile/scaffold.js";
 import { runOnboard } from "./profile/onboard.js";
-import { profileSearchDirs, themeSearchDirs } from "./profile/paths.js";
+import { profileSearchDirs, themeSearchDirs, fontCacheDirs } from "./profile/paths.js";
+import { addFonts, FONT_PACKS } from "./fonts.js";
 import { classifyError } from "./diagnostics.js";
 import { readStructuredFile } from "./util/config-file.js";
 
@@ -84,6 +85,7 @@ Authoring:
 Inspect:
   pdf guide [--json]   everything an agent needs (workflow, blocks, schema, recipes)
   pdf themes | templates | fonts | schema
+  pdf fonts add <pack|url>   download an extra font on demand (cached, auto-used)
 
 For agents: start with 'pdf guide --json'. Skip the interactive 'onboard' — use
 'pdf profile init' (or write a profile YAML). Add --json to any command for one
@@ -237,10 +239,20 @@ function cmdThemeInit(flags: Flags) {
 function cmdFonts(flags: Flags) {
   const typst = resolveTypst();
   if (!typst) throw new TypstMissingError(); // main() renders it (json or prose)
-  const fams = listFontFamilies(typst.bin, [bundledFontsDir, ...asList(flags["font-path"])]);
+  const fams = listFontFamilies(typst.bin, [bundledFontsDir, ...fontCacheDirs(), ...asList(flags["font-path"])]);
   if (flags.json) return printSuccess({ fonts: fams });
   if (!fams.length) fail("No fonts found.");
   for (const f of fams) process.stdout.write(f + "\n");
+}
+
+async function cmdFontsAdd(flags: Flags) {
+  const args = flags.positionals.slice(2); // after "fonts add"
+  if (!args.length) {
+    fail(`fonts add: give a pack name or a direct .ttf/.otf URL.\nPacks: ${Object.keys(FONT_PACKS).join(", ")}`);
+  }
+  const added = await addFonts(args, { global: !flags.local });
+  if (flags.json) return printSuccess({ added });
+  for (const f of added) process.stdout.write(`added ${f}\n`);
 }
 
 function cmdSchema(flags: Flags) {
@@ -460,7 +472,7 @@ async function dispatch(flags: Flags) {
     case "templates":
       return cmdList(flags, "templates", listTemplates());
     case "fonts":
-      return cmdFonts(flags);
+      return argv[1] === "add" ? cmdFontsAdd(flags) : cmdFonts(flags);
     case "theme":
       if (argv[1] === "init") return cmdThemeInit(flags);
       return fail(`Unknown 'theme' subcommand "${argv[1] ?? ""}". Try: pdf theme init <name>`);
