@@ -34,9 +34,44 @@ export const InvoiceData = z.object({
     )
     .min(1),
   notes: z.string().optional(),
+  /** Localizable labels — any subset; unset labels fall back to English. */
+  labels: z
+    .object({
+      invoice: z.string(),
+      billTo: z.string(),
+      number: z.string(),
+      date: z.string(),
+      taxId: z.string(),
+      description: z.string(),
+      qty: z.string(),
+      unit: z.string(),
+      amount: z.string(),
+      subtotal: z.string(),
+      vat: z.string(),
+      total: z.string(),
+      exemptNote: z.string(),
+    })
+    .partial()
+    .optional(),
 });
 
 export type InvoiceData = z.infer<typeof InvoiceData>;
+
+const DEFAULT_LABELS = {
+  invoice: "Invoice",
+  billTo: "Bill to",
+  number: "Invoice #",
+  date: "Date",
+  taxId: "Tax ID",
+  description: "Description",
+  qty: "Qty",
+  unit: "Unit",
+  amount: "Amount",
+  subtotal: "Subtotal",
+  vat: "VAT",
+  total: "Total",
+  exemptNote: "VAT-exempt dealer — invoice does not include VAT.",
+} as const;
 
 const SYMBOLS: Record<string, string> = { USD: "$", EUR: "€", GBP: "£", ILS: "₪" };
 
@@ -56,26 +91,27 @@ export function expandInvoice(data: InvoiceData): Block[] {
   const vatAmount = data.vat.mode === "standard" ? subtotal * data.vat.rate : 0;
   const total = subtotal + vatAmount;
 
+  const L = { ...DEFAULT_LABELS, ...(data.labels ?? {}) };
   const blocks: Block[] = [];
 
   blocks.push({ type: "header", text: data.seller.name, logo: data.seller.logo });
-  blocks.push({ type: "heading", level: 1, text: "Invoice" });
+  blocks.push({ type: "heading", level: 1, text: L.invoice });
 
   const meta: { label: string; value: string }[] = [
-    { label: "Invoice #", value: data.number },
-    { label: "Date", value: data.date },
+    { label: L.number, value: data.number },
+    { label: L.date, value: data.date },
   ];
-  if (data.seller.taxId) meta.push({ label: "Tax ID", value: data.seller.taxId });
+  if (data.seller.taxId) meta.push({ label: L.taxId, value: data.seller.taxId });
   blocks.push({ type: "kv", rows: meta });
 
-  blocks.push({ type: "heading", level: 3, text: "Bill to" });
+  blocks.push({ type: "heading", level: 3, text: L.billTo });
   const client = [data.client.name, data.client.address, data.client.email].filter(Boolean).join(" · ");
   blocks.push({ type: "text", text: client });
 
   blocks.push({ type: "spacer" });
   blocks.push({
     type: "table",
-    header: ["Description", "Qty", "Unit", "Amount"],
+    header: [L.description, L.qty, L.unit, L.amount],
     align: ["left", "right", "right", "right"],
     rows: data.lineItems.map((it) => [
       it.description,
@@ -86,17 +122,17 @@ export function expandInvoice(data: InvoiceData): Block[] {
   });
 
   const totals: { label: string; value: string; emphasis?: boolean }[] = [
-    { label: "Subtotal", value: money(subtotal, cur) },
+    { label: L.subtotal, value: money(subtotal, cur) },
   ];
   if (data.vat.mode === "standard") {
-    totals.push({ label: `VAT (${(data.vat.rate * 100).toFixed(0)}%)`, value: money(vatAmount, cur) });
+    totals.push({ label: `${L.vat} (${(data.vat.rate * 100).toFixed(0)}%)`, value: money(vatAmount, cur) });
   }
-  totals.push({ label: "Total", value: money(total, cur), emphasis: true });
+  totals.push({ label: L.total, value: money(total, cur), emphasis: true });
   blocks.push({ type: "kv", rows: totals });
 
   if (data.vat.mode === "exempt") {
     blocks.push({ type: "spacer" });
-    blocks.push({ type: "text", text: "VAT-exempt dealer — invoice does not include VAT." });
+    blocks.push({ type: "text", text: L.exemptNote });
   }
   if (data.notes) {
     blocks.push({ type: "callout", kind: "note", body: [{ type: "text", text: data.notes }] });

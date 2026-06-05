@@ -10,13 +10,16 @@ export type CalloutKind = "definition" | "theorem" | "tip" | "note";
 export type Align = "left" | "center" | "right";
 export type Dir = "ltr" | "rtl";
 
+/** Math input syntax. "latex" routes through mitex; "typst" is native. */
+export type MathSyntax = "latex" | "typst";
+
 export type Block =
-  | { type: "heading"; level?: number; text: string }
+  | { type: "heading"; level?: number; text: string; dir?: Dir }
   | { type: "text"; text: string; dir?: Dir }
-  | { type: "list"; ordered?: boolean; items: string[] }
+  | { type: "list"; ordered?: boolean; items: string[]; dir?: Dir }
   | { type: "table"; header?: string[]; rows: string[][]; align?: Align[] }
   | { type: "kv"; rows: { label: string; value: string; emphasis?: boolean }[] }
-  | { type: "math"; tex: string }
+  | { type: "math"; tex: string; syntax?: MathSyntax }
   | { type: "chart"; kind: "bar" | "line" | "pie"; title?: string; data: { label: string; value: number }[] }
   | { type: "image"; src: string; width?: string; alt?: string }
   | { type: "columns"; ratios?: number[]; children: Block[][] }
@@ -30,6 +33,7 @@ const HeadingBlock = z.object({
   type: z.literal("heading"),
   level: z.number().int().min(1).max(4).optional(),
   text: z.string(),
+  dir: z.enum(["ltr", "rtl"]).optional(),
 });
 
 const TextBlock = z.object({
@@ -42,6 +46,7 @@ const ListBlock = z.object({
   type: z.literal("list"),
   ordered: z.boolean().optional(),
   items: z.array(z.string()).min(1),
+  dir: z.enum(["ltr", "rtl"]).optional(),
 });
 
 const TableBlock = z.object({
@@ -67,6 +72,7 @@ const KvBlock = z.object({
 const MathBlock = z.object({
   type: z.literal("math"),
   tex: z.string(),
+  syntax: z.enum(["latex", "typst"]).optional(),
 });
 
 const ChartBlock = z.object({
@@ -146,6 +152,8 @@ export const SpecSchema = z
     theme: z.string().optional(),
     dir: z.enum(["ltr", "rtl"]).optional(),
     lang: z.string().optional(),
+    /** Default math syntax for the document. Defaults to "latex". */
+    math: z.enum(["latex", "typst"]).optional(),
     blocks: z.array(BlockSchema).optional(),
   })
   .refine((s) => (s.template ? s.data !== undefined : Array.isArray(s.blocks)), {

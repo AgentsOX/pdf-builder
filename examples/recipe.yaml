@@ -1,0 +1,40 @@
+# A recipe — versatility: kv meta, columns (ingredients | steps), callout.
+theme: default
+blocks:
+  - { type: header, text: "AgentsOX Kitchen" }
+  - { type: heading, level: 1, text: "Shakshuka for Two" }
+  - type: kv
+    rows:
+      - { label: "Prep", value: "10 min" }
+      - { label: "Cook", value: "20 min" }
+      - { label: "Serves", value: "2" }
+
+  - type: columns
+    ratios: [2, 3]
+    children:
+      - - { type: heading, level: 3, text: "Ingredients" }
+        - type: list
+          items:
+            - "2 tbsp olive oil"
+            - "1 onion, diced"
+            - "1 red pepper, sliced"
+            - "400 g chopped tomatoes"
+            - "4 eggs"
+            - "Salt, cumin, paprika"
+      - - { type: heading, level: 3, text: "Method" }
+        - type: list
+          ordered: true
+          items:
+            - "Soften the onion and pepper in the oil, 5 min."
+            - "Add tomatoes and spices; simmer 10 min until thick."
+            - "Make 4 wells; crack in the eggs."
+            - "Cover and cook 6–8 min until whites set."
+            - "Finish with parsley and serve with bread."
+
+  - type: callout
+    kind: tip
+    title: Tip
+    body:
+      - { type: text, text: "Keep the heat low once the eggs go in so the yolks stay runny." }
+
+  - { type: footer, text: "AgentsOX Kitchen", pageNumbers: true }

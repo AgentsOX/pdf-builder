@@ -1,5 +1,7 @@
-# Freeform path: raw blocks. Shows math, callouts, columns and a rules table.
+# Freeform path with LaTeX math (the default). Single-quoted YAML keeps
+# backslashes literal, so you write standard LaTeX.
 theme: study
+math: latex
 blocks:
   - { type: header, text: "Calculus — Derivatives" }
 
@@ -10,27 +12,27 @@ blocks:
     title: Derivative
     body:
       - type: text
-        text: "The instantaneous rate of change: $f'(x) = lim_(h -> 0) (f(x+h) - f(x)) / h$."
+        text: 'The instantaneous rate of change: $f''(x) = \lim_{h \to 0} \frac{f(x+h) - f(x)}{h}$.'
 
   - { type: heading, level: 2, text: "Core rules" }
   - type: table
     header: ["Rule", "Formula"]
     rows:
-      - ["Power", "$d/(d x) x^n = n x^(n-1)$"]
-      - ["Product", "$(f g)' = f' g + f g'$"]
-      - ["Chain", "$(d y)/(d x) = (d y)/(d u) (d u)/(d x)$"]
+      - ["Power", '$\frac{d}{dx} x^n = n x^{n-1}$']
+      - ["Product", "$(fg)' = f'g + fg'$"]
+      - ["Chain", '$\frac{dy}{dx} = \frac{dy}{du}\,\frac{du}{dx}$']
 
   - type: callout
     kind: theorem
     title: Fundamental Theorem of Calculus
     body:
-      - { type: math, tex: "integral_a^b f'(x) dif x = f(b) - f(a)" }
+      - { type: math, tex: '\int_a^b f''(x)\,dx = f(b) - f(a)' }
 
   - { type: heading, level: 2, text: "Worked example" }
   - type: columns
     children:
       - - { type: text, text: "Differentiate term by term:" }
-        - { type: math, tex: "d/(d x) (3 x^2 + 2 x) = 6 x + 2" }
+        - { type: math, tex: '\frac{d}{dx}\left(3x^2 + 2x\right) = 6x + 2' }
       - - { type: callout, kind: tip, body: [ { type: text, text: "Constants drop; powers step down by one." } ] }
 
   - { type: footer, text: "Study notes", pageNumbers: true }

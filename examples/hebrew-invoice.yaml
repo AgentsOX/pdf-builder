@@ -1,0 +1,37 @@
+# RTL invoice: same `invoice` template, dir: rtl + localized Hebrew labels.
+# Numbers/amounts stay LTR automatically via Unicode bidi.
+template: invoice
+theme: default
+dir: rtl
+lang: he
+data:
+  seller:
+    name: אג׳נטסוקס בע״מ
+    email: hello@agentsox.com
+    taxId: "514123456"
+  client:
+    name: אקמה טכנולוגיות בע״מ
+    address: רחוב הרצל 1, תל אביב
+  number: "2026-001"
+  date: "2026-06-05"
+  currency: ILS
+  vat:
+    mode: standard
+    rate: 0.18
+  lineItems:
+    - { description: הקמת בוט שאלות ותשובות, qty: 1, unitPrice: 4200 }
+    - { description: ריטיינר חודשי, qty: 3, unitPrice: 1500 }
+  notes: התשלום בתוך 30 יום.
+  labels:
+    invoice: חשבונית מס
+    billTo: לכבוד
+    number: מס׳ חשבונית
+    date: תאריך
+    taxId: ע.מ / ח.פ
+    description: תיאור
+    qty: כמות
+    unit: מחיר יחידה
+    amount: סכום
+    subtotal: סכום ביניים
+    vat: מע״מ
+    total: סה״כ לתשלום

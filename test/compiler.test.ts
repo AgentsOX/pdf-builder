@@ -12,10 +12,16 @@ describe("escaping", () => {
     expect(escapeText("a # b * c")).toBe("a \\# b \\* c");
   });
 
-  it("passes inline math through but escapes prose", () => {
-    const out = emitInline("rate # is $x^2$ today");
+  it("passes inline math through (typst mode) but escapes prose", () => {
+    const out = emitInline("rate # is $x^2$ today", "typst");
     expect(out).toContain("$x^2$");
     expect(out).toContain("\\#");
+  });
+
+  it("renders inline LaTeX via mitex in latex mode", () => {
+    const out = emitInline("a $\\frac{1}{2}$ b", "latex");
+    expect(out).toContain("#mi(");
+    expect(out).toContain("\\frac{1}{2}");
   });
 });
 
@@ -43,9 +49,25 @@ describe("compileDocument", () => {
     expect(typst).toContain('text(weight: "bold")');
   });
 
-  it("emits display math", () => {
+  it("emits LaTeX display math via mitex by default", () => {
     const { typst } = compile([{ type: "math", tex: "a^2 + b^2 = c^2" }]);
-    expect(typst).toContain("$ a^2 + b^2 = c^2 $");
+    expect(typst).toContain("#mitex(");
+    expect(typst).toContain("a^2 + b^2 = c^2");
+  });
+
+  it("emits native Typst display math when math: typst", () => {
+    const { typst } = compileDocument([{ type: "math", tex: "a^2" }], theme, { math: "typst" });
+    expect(typst).toContain("$ a^2 $");
+  });
+
+  it("imports mitex only when LaTeX math is used", () => {
+    expect(compile([{ type: "math", tex: "x" }]).typst).toContain("mitex");
+    expect(compile([{ type: "text", text: "plain prose, no math" }]).typst).not.toContain("import");
+  });
+
+  it("wraps a block in a direction override (RTL)", () => {
+    const { typst } = compile([{ type: "text", text: "שלום", dir: "rtl" }]);
+    expect(typst).toContain("#text(dir: rtl)");
   });
 
   it("calls the callout helper", () => {

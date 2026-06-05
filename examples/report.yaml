@@ -1,0 +1,34 @@
+# A business report — header/footer, kv, chart (table-stub in v1), table, callouts.
+theme: default
+blocks:
+  - { type: header, text: "AgentsOX — Q2 2026 Report" }
+  - { type: heading, level: 1, text: "Q2 Performance Review" }
+  - type: kv
+    rows:
+      - { label: "Period", value: "Apr–Jun 2026" }
+      - { label: "Prepared by", value: "Revenue Team" }
+
+  - { type: heading, level: 2, text: "Monthly revenue (k USD)" }
+  - type: chart
+    kind: bar
+    title: "Revenue by month"
+    data:
+      - { label: "Apr", value: 18 }
+      - { label: "May", value: 24 }
+      - { label: "Jun", value: 31 }
+
+  - type: columns
+    children:
+      - - { type: callout, kind: tip, title: "Highlight", body: [ { type: text, text: "+72% QoQ, driven by 3 new FAQ-bot clients." } ] }
+      - - { type: callout, kind: note, title: "Watch", body: [ { type: text, text: "Onboarding time still averages 9 days." } ] }
+
+  - { type: heading, level: 2, text: "Top accounts" }
+  - type: table
+    header: ["Client", "Plan", "MRR"]
+    align: ["left", "left", "right"]
+    rows:
+      - ["Acme", "Business", "$1,200"]
+      - ["Globex", "Starter", "$900"]
+      - ["Initech", "Business", "$1,500"]
+
+  - { type: footer, text: "Confidential", pageNumbers: true }

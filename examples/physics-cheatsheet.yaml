@@ -1,0 +1,27 @@
+# LaTeX-heavy cheat sheet (default math: latex), two-column dense layout.
+theme: study
+math: latex
+blocks:
+  - { type: header, text: "Physics — Formula Sheet" }
+  - { type: heading, level: 1, text: "Physics Cheat Sheet" }
+
+  - type: columns
+    children:
+      - - { type: heading, level: 3, text: "Mechanics" }
+        - { type: text, text: "Newton's second law: $\\vec{F} = m\\vec{a}$." }
+        - { type: math, tex: 'W = \int \vec{F} \cdot d\vec{r}' }
+        - { type: text, text: "Kinetic energy: $E_k = \\tfrac{1}{2} m v^2$." }
+        - { type: heading, level: 3, text: "Waves" }
+        - { type: math, tex: 'v = f\lambda, \qquad T = \frac{1}{f}' }
+      - - { type: heading, level: 3, text: "Electromagnetism" }
+        - { type: text, text: "Gauss's law:" }
+        - { type: math, tex: '\oint \vec{E} \cdot d\vec{A} = \frac{Q}{\varepsilon_0}' }
+        - { type: heading, level: 3, text: "Quantum" }
+        - { type: math, tex: 'i\hbar \frac{\partial}{\partial t}\Psi = \hat{H}\Psi' }
+        - { type: text, text: "Energy: $E = h\\nu$." }
+
+  - type: callout
+    kind: theorem
+    title: Euler's identity
+    body:
+      - { type: math, tex: 'e^{i\pi} + 1 = 0' }

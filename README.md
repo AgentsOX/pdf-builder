@@ -32,6 +32,27 @@ Two front doors, one block tree:
 
 `heading` · `text` (inline `$…$` math) · `list` · `table` · `kv` (label→value rows, e.g. totals) · `math` (display equation) · `chart` · `image` · `columns` · `callout` (definition/theorem/tip/note) · `spacer` · `pagebreak` · `header` · `footer`
 
+## Capabilities
+
+- **LaTeX math** — write standard LaTeX (`\frac{d}{dx}`, `\int_a^b`, `\vec{F}`); it's the default math syntax (set `math: typst` for native Typst math, or per-block `syntax`). Rendered via a vendored [mitex](https://github.com/mitex-rs/mitex), so it works **offline and deterministically** — no first-run download.
+- **RTL & LTR** — set `dir: rtl` + `lang` on the document, or `dir` on any block. A Hebrew font (David Libre) is bundled.
+- **Mixed bidi on one line** — Hebrew + English + numbers in the same line resolve correctly via Unicode bidi (e.g. `Total: 2,400 ₪ · Renewal: התחדשות`).
+- **Any document** — invoices, reports, recipes, cover letters, CVs, cheat sheets, study notes — all from the same block vocabulary.
+
+## Examples
+
+Render any of these with `pdf build examples/<name>.yaml --png`:
+
+| File | Shows |
+|---|---|
+| `invoice.yaml` | template path, computed totals |
+| `hebrew-invoice.yaml` | **RTL** invoice, localized labels, LTR amounts |
+| `bilingual.yaml` | **mixed RTL/LTR on one line** |
+| `study-summary.yaml` | **LaTeX** math, callouts, columns |
+| `physics-cheatsheet.yaml` | dense **LaTeX** formula sheet |
+| `recipe.yaml` | columns, ordered/unordered lists |
+| `report.yaml` | kv, chart (table-stub), tables, callouts |
+
 ## Install
 
 ```bash

@@ -81,10 +81,11 @@ interface RunOpts {
   output: string; // absolute path (or {p}-pattern for png)
   root: string; // sandbox root for image() includes
   fontPath?: string;
+  packagePath?: string; // vendored Typst package cache (for offline mitex)
   ppi?: number; // png only
 }
 
-function run({ bin, input, output, root, fontPath, ppi }: RunOpts): { stderr: string } {
+function run({ bin, input, output, root, fontPath, packagePath, ppi }: RunOpts): { stderr: string } {
   const args = [
     "compile",
     input,
@@ -96,6 +97,7 @@ function run({ bin, input, output, root, fontPath, ppi }: RunOpts): { stderr: st
     "--ignore-system-fonts", // resolve fonts only from bundle/embedded → reproducible
   ];
   if (fontPath && existsSync(fontPath)) args.push("--font-path", fontPath);
+  if (packagePath && existsSync(packagePath)) args.push("--package-cache-path", packagePath);
   if (ppi) args.push("--ppi", String(ppi));
 
   const r = spawnSync(bin, args, { encoding: "utf8" });
@@ -118,4 +120,25 @@ export function compileToPdf(opts: Omit<RunOpts, "ppi">): { stderr: string } {
 
 export function compileToPng(opts: RunOpts): { stderr: string } {
   return run({ ppi: 144, ...opts });
+}
+
+/**
+ * Drop warnings that aren't actionable through the spec model: those from
+ * vendored packages, and Typst API deprecations (the math engine emits symbols
+ * the author never wrote). User-facing warnings (e.g. real content issues) pass
+ * through. Skips each warning's indented source/continuation lines too.
+ */
+export function filterTypstStderr(stderr: string): string {
+  const lines = (stderr ?? "").split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    const drop = /@preview\//.test(l) || /warning:.*is deprecated/.test(l);
+    if (drop) {
+      while (i + 1 < lines.length && /^\s*(│|┌|└|=|\d+\s*│|\^|·|note:)/.test(lines[i + 1])) i++;
+      continue;
+    }
+    out.push(l);
+  }
+  return out.join("\n");
 }

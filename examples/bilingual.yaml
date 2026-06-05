@@ -1,0 +1,25 @@
+# Mixed RTL + LTR — including both scripts on the SAME line (Unicode bidi).
+theme: default
+blocks:
+  - { type: heading, level: 1, text: "Bilingual — דו־לשוני" }
+
+  - { type: heading, level: 3, text: "LTR base line with Hebrew inside" }
+  - type: text
+    text: "AgentsOX builds AI agents — אנחנו בונים סוכני בינה מלאכותית — for business."
+
+  - { type: heading, level: 3, text: "RTL base line with English + numbers inside", dir: rtl }
+  - type: text
+    dir: rtl
+    text: "צרו קשר בכתובת hello@agentsox.com או חייגו 03-1234567 עוד היום."
+
+  - type: callout
+    kind: note
+    title: הערה
+    body:
+      - type: text
+        dir: rtl
+        text: "המוצר Widget תומך בעברית ובאנגלית, כולל סכומים כמו 1,200 ₪ באותה שורה."
+
+  - { type: heading, level: 3, text: "Same line, both directions" }
+  - type: text
+    text: "Status: פעיל · Plan: עסקי · Total: 2,400 ₪ · Renewal: התחדשות אוטומטית."

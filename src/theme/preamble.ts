@@ -1,22 +1,31 @@
-import type { Block } from "../spec/schema.js";
+import type { Block, MathSyntax } from "../spec/schema.js";
 import { emitInline } from "../compiler/escape.js";
 import type { ThemeTokens } from "./types.js";
 
 type HeaderBlock = Extract<Block, { type: "header" }>;
 type FooterBlock = Extract<Block, { type: "footer" }>;
 
+/** Import line for the vendored mitex (LaTeX → Typst math) package. */
+export const MITEX_IMPORT = '#import "@preview/mitex:0.2.5": mi, mitex';
+
+/** Bundled Hebrew fallback face, appended to every font list for RTL coverage. */
+const HEBREW_FALLBACK = "David Libre";
+
 const rgb = (hex: string) => `rgb("${hex}")`;
 
-function headerContent(t: ThemeTokens, h: HeaderBlock): string {
+/** A Typst font tuple with the Hebrew fallback appended. */
+const fontList = (primary: string) => `("${primary}", "${HEBREW_FALLBACK}")`;
+
+function headerContent(t: ThemeTokens, h: HeaderBlock, math: MathSyntax): string {
   const bits: string[] = [];
   if (h.logo) bits.push(`image("${h.logo}", height: 1.2em)`);
-  if (h.text) bits.push(`text(weight: "bold")[${emitInline(h.text)}]`);
+  if (h.text) bits.push(`text(weight: "bold")[${emitInline(h.text, math)}]`);
   const inner = bits.length === 2 ? `#${bits[0]} #h(1fr) #${bits[1]}` : bits.length ? `#${bits[0]}` : "";
   return `[#set text(size: ${t.size.small}, fill: ${rgb(t.color.muted)})\n${inner}\n#v(0.2em)\n#line(length: 100%, stroke: 0.5pt + ${rgb(t.color.border)})]`;
 }
 
-function footerContent(t: ThemeTokens, f: FooterBlock): string {
-  const left = f.text ? emitInline(f.text) : "";
+function footerContent(t: ThemeTokens, f: FooterBlock, math: MathSyntax): string {
+  const left = f.text ? emitInline(f.text, math) : "";
   const right = f.pageNumbers ? `#context counter(page).display()` : "";
   const grid = `#grid(columns: (1fr, auto), [${left}], [${right}])`;
   return `[#set text(size: ${t.size.small}, fill: ${rgb(t.color.muted)})\n${grid}]`;
@@ -29,10 +38,11 @@ function footerContent(t: ThemeTokens, f: FooterBlock): string {
  */
 export function themePreamble(
   t: ThemeTokens,
-  page: { header?: HeaderBlock; footer?: FooterBlock; dir?: string; lang?: string },
+  page: { header?: HeaderBlock; footer?: FooterBlock; dir?: string; lang?: string; math?: MathSyntax },
 ): string {
   const dir = page.dir ?? t.dir;
   const lang = page.lang ?? t.lang;
+  const math = page.math ?? "latex";
 
   const callouts = (Object.keys(t.color.callout) as (keyof typeof t.color.callout)[])
     .map((k) => `  ${k}: (bg: ${rgb(t.color.callout[k].bg)}, border: ${rgb(t.color.callout[k].border)}),`)
@@ -41,8 +51,8 @@ export function themePreamble(
   const pageArgs = [
     `paper: "${t.page.paper}"`,
     `margin: ${t.page.margin}`,
-    page.header ? `header: ${headerContent(t, page.header)}` : null,
-    page.footer ? `footer: ${footerContent(t, page.footer)}` : null,
+    page.header ? `header: ${headerContent(t, page.header, math)}` : null,
+    page.footer ? `footer: ${footerContent(t, page.footer, math)}` : null,
   ]
     .filter(Boolean)
     .join(",\n  ");
@@ -52,7 +62,7 @@ export function themePreamble(
   ${pageArgs}
 )
 #set text(
-  font: ("${t.fonts.body}"),
+  font: ${fontList(t.fonts.body)},
   size: ${t.size.base},
   fill: ${rgb(t.color.text)},
   lang: "${lang}",
@@ -60,7 +70,7 @@ export function themePreamble(
 )
 #set par(justify: true, leading: 0.7em)
 #set heading(numbering: none)
-#show heading: set text(font: ("${t.fonts.heading}"), fill: ${rgb(t.color.text)})
+#show heading: set text(font: ${fontList(t.fonts.heading)}, fill: ${rgb(t.color.text)})
 #show heading.where(level: 1): set text(size: ${t.size.h1})
 #show heading.where(level: 2): set text(size: ${t.size.h2})
 #show heading.where(level: 3): set text(size: ${t.size.h3})

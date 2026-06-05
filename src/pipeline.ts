@@ -11,6 +11,7 @@ import {
   versionWarnings,
   compileToPdf,
   compileToPng,
+  filterTypstStderr,
   TypstMissingError,
   TypstCompileError,
 } from "./typst.js";
@@ -50,7 +51,7 @@ export interface BuildResult {
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 function parseTypstStderr(stderr: string): Issue[] {
-  return stderr
+  return filterTypstStderr(stderr)
     .split("\n")
     .filter((l) => /warning:/i.test(l))
     .map((l) => ({
@@ -94,7 +95,11 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
   const themeName = opts.theme ?? validated.theme ?? "default";
   const theme = getTheme(themeName);
 
-  const compiled = compileDocument(blocks, theme, { dir: validated.dir, lang: validated.lang });
+  const compiled = compileDocument(blocks, theme, {
+    dir: validated.dir,
+    lang: validated.lang,
+    math: validated.math,
+  });
   warnings.push(...compiled.warnings);
 
   // Engine.
@@ -110,9 +115,10 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
   writeFileSync(typPath, compiled.typst, "utf8");
 
   const fontPath = opts.fontPath ?? join(packageRoot, "fonts");
+  const packagePath = join(packageRoot, "vendor", "typst-packages");
 
   try {
-    const { stderr } = compileToPdf({ bin: typst.bin, input: typPath, output: pdfPath, root: outDir, fontPath });
+    const { stderr } = compileToPdf({ bin: typst.bin, input: typPath, output: pdfPath, root: outDir, fontPath, packagePath });
     warnings.push(...parseTypstStderr(stderr));
   } catch (e) {
     if (e instanceof TypstCompileError) {
@@ -126,7 +132,7 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
   let pageImages: string[] = [];
   if (opts.png) {
     const pattern = join(outDir, `${base}-page-{0p}.png`);
-    compileToPng({ bin: typst.bin, input: typPath, output: pattern, root: outDir, fontPath, ppi: opts.pngPpi });
+    compileToPng({ bin: typst.bin, input: typPath, output: pattern, root: outDir, fontPath, packagePath, ppi: opts.pngPpi });
     pageImages = readdirSync(outDir)
       .filter((f) => f.startsWith(`${base}-page-`) && f.endsWith(".png"))
       .sort()

@@ -1,9 +1,6 @@
 node_modules/
 dist/
 out/
-*.pdf
-*.png
-*.typ
 *.tsbuildinfo
 
 # internal planning doc — not part of the OSS release
