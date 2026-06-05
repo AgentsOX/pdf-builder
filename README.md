@@ -4,111 +4,124 @@
 [![CI](https://github.com/AgentsOX/pdf-builder/actions/workflows/ci.yml/badge.svg)](https://github.com/AgentsOX/pdf-builder/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/npm/l/@agentsox/pdf-builder)](./LICENSE)
 
-An **agent-first CLI that turns a declarative document spec into a correct, branded PDF.**
+Turn a YAML (or JSON) spec into a PDF. You describe what's on the page — headings, tables, totals, equations, charts — and it renders with [Typst](https://typst.app). The same spec always produces the same bytes.
 
-Describe *what the page contains* — headings, tables, totals, equations, charts — and the tool renders it deterministically with [Typst](https://typst.app). It's built so an LLM agent can produce a single structured file and get a perfect PDF back, with a tight see-and-correct loop and no silent failures.
+It's built to be driven by an LLM agent: the agent writes one structured file, gets a PDF plus page images back, and can look at what it made and fix it. It's also just a CLI, and works fine by hand.
 
 ```
-spec (YAML/JSON)  ──►  pdf-builder  ──►  PDF  (+ page images + manifest)
+spec.yaml  →  pdf  →  PDF + page PNGs + a manifest
 ```
 
-## Why
-
-Most "agent makes a PDF" tools are imperative SDKs the model drives blind — so they truncate content, miscompute totals, and produce ugly output. pdf-builder inverts that:
-
-- **One declarative spec, one render.** No multi-step imperative API to sequence wrong.
-- **The agent owns content; the theme owns aesthetics.** It can't pick bad colors or fonts.
-- **The engine computes numbers; the agent never does.** Invoice totals are derived in code.
-- **No silent failure.** Invalid specs, bad math, and overflow surface as `{path → expected → got → fix}` — never a wrong-but-valid-looking PDF.
-- **Deterministic.** Same spec → byte-stable PDF (fonts embedded, creation date pinned).
-- **Renders back page images** so an agent can *see* its output and self-correct.
-
-## The mental model
-
-> A document is **data**. A template turns data into **blocks**. A theme **paints** blocks. The renderer is written once and never changes.
-
-Two front doors, one block tree:
-
-- **Template path** — emit domain data (invoice fields); a template expands it to blocks.
-- **Freeform path** — emit `blocks[]` directly. Any document type, no template needed.
-
-### Block vocabulary (closed, ~14)
-
-`heading` · `text` (inline `$…$` math) · `list` · `table` · `kv` (label→value rows, e.g. totals) · `math` (display equation) · `chart` · `image` · `columns` · `callout` (definition/theorem/tip/note) · `spacer` · `pagebreak` · `header` · `footer`
-
-## Capabilities
-
-- **LaTeX math** — write standard LaTeX (`\frac{d}{dx}`, `\int_a^b`, `\vec{F}`); it's the default math syntax (set `math: typst` for native Typst math, or per-block `syntax`). Rendered via a vendored [mitex](https://github.com/mitex-rs/mitex), so it works **offline and deterministically** — no first-run download.
-- **RTL & LTR** — set `dir: rtl` + `lang` on the document, or `dir` on any block. A Hebrew font (David Libre) is bundled.
-- **Mixed bidi on one line** — Hebrew + English + numbers in the same line resolve correctly via Unicode bidi (e.g. `Total: 2,400 ₪ · Renewal: התחדשות`).
-- **Real charts** — bar/line/pie via vendored [cetz](https://github.com/cetz-package/cetz) (offline), styled with your brand color.
-- **Strict & loud** — unknown/typo'd keys, ragged tables, missing images/logos, and unavailable fonts are reported as `{path → expected → got → fix}`; nothing fails silently.
-- **JSON Schema** — `pdf schema` emits a schema for agent validation and editor autocomplete on spec files.
-- **Any document** — invoices, reports, recipes, cover letters, CVs, cheat sheets, study notes — all from the same block vocabulary.
-
-## Profiles — one setup per context
-
-A **profile** is a named context (business, academic, side-project) = a theme **+ document defaults + reusable identity**. Set it once; then your specs only carry the per-document content.
+## Quick start
 
 ```bash
-pdf onboard                 # interactive: name, brand color/logo, seller, default
-pdf profile list            # ★ marks the default
-pdf profile use academic    # switch your default
-pdf build invoice.yaml                      # uses your default profile
-pdf build invoice.yaml --profile business   # pick one explicitly
-pdf build paper.yaml --no-profile           # ignore profiles entirely
+npm install -g @agentsox/pdf-builder
+brew install typst                 # the render engine (other platforms below)
+pdf new --template invoice > invoice.yaml
+pdf build invoice.yaml --png
 ```
 
-A profile (in `~/.config/pdf-builder/profiles/` globally, or `./.pdfbuilder/` per project):
+You get `invoice.pdf`, one PNG per page, and a manifest next to it.
+
+## What you write
+
+A spec is either data for a template, or a list of blocks. Both become the same block tree.
+
+With a template you give the data; the template handles layout and arithmetic:
 
 ```yaml
-name: business
-theme: acme                       # a brand theme (colors/fonts/logo)
-defaults: { lang: he, dir: rtl }
-template:
-  invoice:
-    seller: { name: "Acme Ltd", taxId: "514…" }   # never repeated in a spec
-    currency: ILS
-    vat: { mode: standard }
+template: invoice
+data:
+  client: { name: "Acme Co" }
+  number: "INV-001"
+  lineItems:
+    - { description: "Setup", qty: 1, unitPrice: 1200 }
 ```
 
-Now an invoice spec is just the content — `client` + line items — and the profile fills the seller, tax ID, brand, language, and VAT. **The spec always wins on conflicts**, and the manifest records which profile rendered the PDF. Your private business identity lives in one profile, not in every spec you share.
+Totals and VAT are computed in code, never by you or the agent.
 
-## Branding — clone and make it yours (no code)
+Freeform mode places blocks directly, for anything that isn't a template:
 
-Define a theme file that inherits a built-in and overrides only what differs:
+```yaml
+blocks:
+  - { type: heading, level: 1, text: "Q2 Report" }
+  - { type: text, text: "Revenue grew, with $\\Delta = 72\\%$ QoQ." }
+  - type: table
+    header: ["Client", "MRR"]
+    rows: [["Acme", "$1,200"], ["Globex", "$900"]]
+```
+
+The full set of blocks: `heading`, `text` (with inline `$…$` math), `list`, `table`, `kv`, `math`, `chart`, `image`, `columns`, `callout`, `spacer`, `pagebreak`, `header`, `footer`. It's deliberately small, so it fits in your head (or an agent's context window).
+
+## What it handles
+
+- **LaTeX math** like `\frac{d}{dx}`, `\int_a^b`, `\vec{F}`. It's the default; set `math: typst` for native Typst math. A copy of [mitex](https://github.com/mitex-rs/mitex) is bundled, so there's no first-run download and the output stays stable.
+- **Right-to-left and mixed scripts.** Set `dir: rtl` and `lang` on the document or any block. Hebrew, English, and numbers on one line resolve correctly, and a Hebrew font (David Libre) ships in the package.
+- **Charts** (bar, line, pie) via a bundled [cetz](https://github.com/cetz-package/cetz), drawn in your brand color.
+- **Errors instead of bad PDFs.** Unknown keys, ragged tables, missing images, unavailable fonts — each comes back as `{ path, expected, got, fix }`. You won't get a wrong-but-plausible document.
+- **A JSON Schema** (`pdf schema`) for validation and editor autocomplete on spec files.
+
+Invoices, reports, recipes, CVs, cheat sheets, study notes — they're all just blocks.
+
+## Theming
+
+A theme owns the look: fonts, colors, the logo, callout styles. Specs never touch any of that, so an agent can't pick clashing colors or the wrong font. To brand it, extend a built-in theme and override what differs:
 
 ```yaml
 # themes/acme.yaml
 extends: default
 fonts: { heading: "Poppins", body: "Inter" }
 color: { primary: "#E11D48", text: "#111" }
-logo: assets/acme-logo.svg        # relative to this file; shows in the header
+logo: assets/acme-logo.svg
 ```
 
 ```bash
-pdf theme init acme --out themes/acme.yaml   # scaffold a starter
-pdf build report.yaml --theme acme           # searched in ./themes
-pdf build report.yaml --theme acme --font-path ./brand-fonts   # your own fonts
-pdf fonts --font-path ./brand-fonts          # see which families Typst can use
+pdf theme init acme --out themes/acme.yaml                       # scaffold one
+pdf build report.yaml --theme acme                               # found in ./themes
+pdf build report.yaml --theme acme --font-path ./brand-fonts     # bring your own fonts
 ```
 
-The **same spec** renders in any brand just by switching `--theme` — colors, fonts, chart color, callouts, and logo all follow.
+Switch `--theme` and the same spec re-renders in a different brand.
+
+## Profiles
+
+A profile bundles a theme with document defaults and reusable identity under a name like `business` or `academic`. Set it once and your specs carry only what changes between documents.
+
+```yaml
+# ~/.config/pdf-builder/profiles/business.yaml
+name: business
+theme: acme
+defaults: { lang: he, dir: rtl }
+template:
+  invoice:
+    seller: { name: "Acme Ltd", taxId: "514…" }
+    currency: ILS
+    vat: { mode: standard }
+```
+
+```bash
+pdf onboard                 # set one up interactively
+pdf profile list            # ★ marks the default
+pdf profile use academic    # change the default
+pdf build invoice.yaml --profile business
+pdf build paper.yaml --no-profile
+```
+
+Now an invoice is just the client and line items; the profile fills in the seller, tax ID, brand, and VAT. When a spec and a profile disagree, the spec wins, and the manifest records which profile was used. Your business details live in one file instead of every spec you hand out.
 
 ## Examples
 
-Render any of these with `pdf build examples/<name>.yaml --png`:
+Each renders with `pdf build examples/<name>.yaml --png`:
 
 | File | Shows |
 |---|---|
 | `invoice.yaml` | template path, computed totals |
-| `hebrew-invoice.yaml` | **RTL** invoice, localized labels, LTR amounts |
-| `bilingual.yaml` | **mixed RTL/LTR on one line** |
-| `study-summary.yaml` | **LaTeX** math, callouts, columns |
-| `physics-cheatsheet.yaml` | dense **LaTeX** formula sheet |
-| `recipe.yaml` | columns, ordered/unordered lists |
-| `report.yaml` | kv, real bar chart, tables, callouts |
-| `themes/acme.yaml` | a brand theme (`--theme examples/themes/acme.yaml`) |
+| `hebrew-invoice.yaml` | RTL invoice, localized labels, LTR amounts |
+| `bilingual.yaml` | mixed RTL/LTR on one line |
+| `study-summary.yaml` | LaTeX math, callouts, columns |
+| `physics-cheatsheet.yaml` | dense formula sheet |
+| `recipe.yaml` | columns and lists |
+| `report.yaml` | kv rows, a bar chart, tables, callouts |
 
 ## Install
 
@@ -119,93 +132,66 @@ npm install -g @agentsox/pdf-builder
 You also need the Typst CLI on your PATH:
 
 ```bash
-brew install typst         # macOS
-cargo install typst-cli    # any platform with Rust
-winget install Typst.Typst # Windows
+brew install typst          # macOS
+cargo install typst-cli     # anywhere with Rust
+winget install Typst.Typst  # Windows
 ```
 
-## Usage
+It pins Typst `0.14.x`, since the engine version changes layout and output bytes. A mismatch warns; override with `PDF_BUILDER_ALLOW_TYPST_MISMATCH=1`.
 
-```bash
-pdf build invoice.yaml --theme default --png   # render → PDF + per-page PNGs + manifest
-pdf new --template invoice                      # scaffold a starter spec
-pdf templates                                   # list templates
-pdf themes                                       # list built-in themes
-pdf fonts [--font-path <dir>]                    # list available font families
-pdf theme init <name> [--out <file>]            # scaffold a brand theme
-pdf schema [--out <file>]                        # emit the spec's JSON Schema
+## Commands
+
+```
+pdf build <file>     render a spec → PDF (+ PNGs, manifest)
+pdf new              scaffold a starter spec
+pdf templates        list templates
+pdf themes           list built-in themes
+pdf fonts            list font families Typst can see
+pdf theme init       scaffold a brand theme
+pdf schema           write the spec's JSON Schema
+pdf guide            print the full playbook (see below)
 ```
 
-`build` flags: `--theme <name|path>`, `--themes-dir <dir>`, `--font-path <dir>` (repeatable), `--out <dir>`, `--basename <name>`, `--png`, `--png-ppi <n>`, `--pdf-standard <a-2b|ua-1|…>`, `--strict`, `--json` (machine-readable result/errors), `--emit-typst`, `--emit-expanded-spec`.
+`build` flags: `--theme <name|path>`, `--themes-dir <dir>`, `--font-path <dir>` (repeatable), `--out <dir>`, `--basename <name>`, `--png`, `--png-ppi <n>`, `--pdf-standard <a-2b|ua-1>`, `--strict`, `--json`, `--emit-typst`, `--emit-expanded-spec`.
 
-## Determinism & provenance
+## Determinism
 
-- **Pinned engine** — requires Typst `0.14.x` (override with `PDF_BUILDER_ALLOW_TYPST_MISMATCH=1`). With `--creation-timestamp 0`, `--ignore-system-fonts`, bundled fonts, and vendored offline packages, the **same spec → byte-identical PDF**.
-- **Manifest** — every build returns `{ schemaVersion, pages, blocks, theme, template, assets, typstVersion, pdfStandard?, hashes: { spec, typst, output } }`, so a render is reproducible and auditable.
-- **Versioned contract** — `spec.schemaVersion` (current: 1); a newer version is rejected with an explicit upgrade message.
-- **PDF standards** — `--pdf-standard a-2b` (PDF/A) or `ua-1` (PDF/UA); non-conformance fails loudly.
+The same spec produces a byte-identical PDF. Fonts are embedded, the creation date is pinned to zero, system fonts are ignored, and the Typst packages are vendored so nothing is fetched while rendering. Every build also writes a manifest:
 
-### Example spec (freeform)
-
-```yaml
-theme: default
-blocks:
-  - { type: heading, level: 1, text: "Q2 Report" }
-  - { type: text, text: "Revenue grew, with $\\Delta = 72\\%$ QoQ." }
-  - type: table
-    header: ["Client", "MRR"]
-    rows:
-      - ["Acme", "$1,200"]
-      - ["Globex", "$900"]
+```json
+{ "schemaVersion": 1, "pages": 1, "blocks": 6, "theme": "default",
+  "typstVersion": "0.14.2", "hashes": { "spec": "…", "typst": "…", "output": "…" } }
 ```
 
-### Example spec (template)
+For archival output, use `--pdf-standard a-2b` (PDF/A) or `ua-1` (PDF/UA). If the result doesn't conform, the build fails instead of pretending it did.
 
-```yaml
-template: invoice
-theme: default
-data:
-  seller: { name: "AgentsOX" }
-  client: { name: "Acme Co" }
-  number: "INV-001"
-  date: "2026-06-05"
-  currency: "USD"
-  vat: { mode: "exempt" }
-  lineItems:
-    - { description: "FAQ bot setup", qty: 1, unitPrice: 1200 }
-```
+## Using it from an agent
 
-## For agents: start with `pdf guide`
+Run `pdf guide --json` once. It returns everything in a single call: the workflow, the block list, the available themes, templates, and profiles, the paths to write config to, a worked example, and the JSON Schema. An agent can onboard from that alone, with nothing pasted into its prompt.
 
-`pdf guide --json` returns the entire playbook in one call — workflow, block vocabulary, live themes/templates/profiles, the config **write-paths**, recipes, a worked example, and the JSON Schema. An agent self-onboards from that one command; no system-prompt paste needed.
+The loop it's designed for: the person describes their brand in plain words ("we're Acme, teal, VAT-registered, logo's attached"); the agent writes the theme and profile files to the paths from `pdf guide`, runs `pdf profile use`, and every build after that is branded. Same idea for "summarise these files into one PDF" — the agent reads them, writes a freeform spec, builds it, looks at the PNGs, and adjusts. (`pdf onboard` is just the by-hand version of that setup.)
 
-**The human speaks; the agent runs the CLI.** The user describes their brand in plain language ("we're Acme, teal, VAT-registered, here's my logo"); the agent writes the theme + profile YAML to the `paths` from `pdf guide`, runs `pdf profile use`, and from then on builds are branded. Likewise "summarise these files into one PDF" → the agent reads them, emits a freeform spec, builds, looks, refines. (The interactive `pdf onboard` is just a convenience for a human at a terminal.)
-
-## For agents: the `--json` contract
-
-`pdf build … --json` prints one stable envelope to stdout (a discriminated union on `ok`) and exits non-zero on failure — no prose to parse:
+Every command accepts `--json` and prints one envelope, a discriminated union on `ok`, with a non-zero exit on failure:
 
 ```jsonc
 // success
-{ "ok": true, "pdf_path": "...", "page_images": ["..."], "manifest": { ... }, "warnings": [ { "path","expected","got","fix" } ] }
+{ "ok": true, "pdf_path": "…", "page_images": ["…"], "manifest": { }, "warnings": [ { "path", "expected", "got", "fix" } ] }
 
 // failure
-{ "ok": false, "error": { "kind": "validation", "message": "...", "issues": [ { "path","expected","got","fix" } ] } }
+{ "ok": false, "error": { "kind": "validation", "message": "…", "issues": [ { "path", "expected", "got", "fix" } ] } }
 ```
 
-`error.kind` is one of `validation · typst_missing · typst_compile · io · unknown`, so failures are branchable without string-matching. Without `--json`, build prints a short human summary and lists warnings on stderr.
+`error.kind` is one of `validation`, `typst_missing`, `typst_compile`, `io`, `unknown`, so an agent branches on it without matching strings.
 
-**`--json` works on every command**, with the same envelope: `pdf profile list --json` → `{ ok, profiles, default }`, `pdf themes --json` → `{ ok, themes }`, `pdf fonts --json` → `{ ok, fonts }`, etc. Any failure is `{ ok: false, error: { kind, message } }` with a non-zero exit.
-
-## Programmatic API
+## Library
 
 ```ts
 import { build } from "@agentsox/pdf-builder";
 
 const result = await build(spec, { theme: "default", png: true });
-// → { pdf_path, page_images[], manifest, warnings }
+// → { pdf_path, page_images, manifest, warnings }
 ```
 
 ## License
 
-MIT © AgentsOX
+MIT. See [LICENSE](./LICENSE).
