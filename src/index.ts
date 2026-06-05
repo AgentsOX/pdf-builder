@@ -18,3 +18,7 @@ export { getTemplate, listTemplates } from "./templates/index.js";
 export type { Template } from "./templates/index.js";
 
 export { hasTypst, resolveTypst } from "./typst.js";
+
+export { loadProfile, listProfiles, getDefaultProfile, setDefaultProfile } from "./profile/load.js";
+export { ProfileSchema } from "./profile/schema.js";
+export type { Profile } from "./profile/schema.js";

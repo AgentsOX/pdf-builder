@@ -8,6 +8,8 @@ import { parseSpec, parseData, SpecError, type Issue } from "./spec/validate.js"
 import { getTemplate } from "./templates/index.js";
 import { getTheme, type ThemeTokens } from "./theme/index.js";
 import { compileDocument } from "./compiler/index.js";
+import { loadProfile, profileNameOf } from "./profile/load.js";
+import { applyProfile } from "./profile/apply.js";
 import {
   resolveTypst,
   assertTypstVersion,
@@ -40,10 +42,13 @@ export interface BuildOptions {
   root?: string;
   /** PDF standard(s) to enforce, comma-separated (e.g. "a-2b", "ua-1"). */
   pdfStandard?: string;
+  /** Profile name/path to apply (theme + defaults + template identity). */
+  profile?: string;
 }
 
 export interface Manifest {
   schemaVersion: number;
+  profile: string | null;
   pages: number;
   blocks: number;
   theme: string;
@@ -99,11 +104,34 @@ export interface ExpandResult {
   theme: ThemeTokens;
   themeName: string;
   templateName: string | null;
+  /** Applied profile name, or null. */
+  profileName: string | null;
+  /** Options after profile merge (themesDir/fontPaths/out/pdfStandard/root). */
+  eff: BuildOptions;
+}
+
+/** Apply a profile (if any) under the spec, returning the merged spec + options. */
+function resolveProfile(spec: unknown, opts: BuildOptions): { spec: unknown; eff: BuildOptions; profileName: string | null } {
+  if (!opts.profile) return { spec, eff: opts, profileName: null };
+  const loaded = loadProfile(opts.profile);
+  const app = applyProfile(spec, loaded);
+  return {
+    spec: app.spec,
+    eff: {
+      ...opts,
+      themesDir: [...(opts.themesDir ?? []), ...app.themesDir],
+      fontPaths: [...(opts.fontPaths ?? []), ...app.fontPaths],
+      out: opts.out ?? app.out,
+      pdfStandard: opts.pdfStandard ?? app.pdfStandard,
+    },
+    profileName: loaded.profile.name ?? profileNameOf(opts.profile),
+  };
 }
 
 /** Validate + migrate a spec and resolve it to a block tree and theme (no engine). */
 export function expandSpec(spec: unknown, opts: BuildOptions = {}): ExpandResult {
-  const validated = migrate(parseSpec(spec));
+  const { spec: workingSpec, eff, profileName } = resolveProfile(spec, opts);
+  const validated = migrate(parseSpec(workingSpec));
 
   let blocks: Block[];
   let templateName: string | null = null;
@@ -116,9 +144,9 @@ export function expandSpec(spec: unknown, opts: BuildOptions = {}): ExpandResult
     blocks = validated.blocks ?? [];
   }
 
-  const themeName = opts.theme ?? validated.theme ?? "default";
-  const theme = getTheme(themeName, { themesDir: opts.themesDir });
-  return { validated, blocks, theme, themeName, templateName };
+  const themeName = eff.theme ?? validated.theme ?? "default";
+  const theme = getTheme(themeName, { themesDir: eff.themesDir });
+  return { validated, blocks, theme, themeName, templateName, profileName, eff };
 }
 
 export interface RenderResult extends ExpandResult {
@@ -131,7 +159,7 @@ export interface RenderResult extends ExpandResult {
 /** Expand a spec and compile it to a Typst source string (no binary needed). */
 export function renderTypst(spec: unknown, opts: BuildOptions = {}): RenderResult {
   const expanded = expandSpec(spec, opts);
-  const root = resolve(opts.root ?? process.cwd());
+  const root = resolve(expanded.eff.root ?? process.cwd());
   const compiled = compileDocument(expanded.blocks, expanded.theme, {
     dir: expanded.validated.dir,
     lang: expanded.validated.lang,
@@ -187,18 +215,20 @@ function validatePdfStandard(std: string): void {
  * spec → validated → blocks → Typst source → PDF (+ PNGs) + manifest + warnings.
  */
 export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
-  if (opts.pdfStandard) validatePdfStandard(opts.pdfStandard);
-
   const rendered = renderTypst(spec, opts);
+  const eff = rendered.eff; // options after profile merge
+  const profileName = rendered.profileName;
   const warnings: Issue[] = [...rendered.warnings];
+
+  if (eff.pdfStandard) validatePdfStandard(eff.pdfStandard);
 
   // Engine.
   const typst = resolveTypst();
   if (!typst) throw new TypstMissingError();
   assertTypstVersion(typst);
 
-  const root = resolve(opts.root ?? process.cwd());
-  const fontPaths = [bundledFontsDir, ...(opts.fontPaths ?? []).map((p) => resolve(p))];
+  const root = resolve(eff.root ?? process.cwd());
+  const fontPaths = [bundledFontsDir, ...(eff.fontPaths ?? []).map((p) => resolve(p))];
   const packagePath = vendorPackagesDir;
 
   // Font-availability check (matches the render's --ignore-system-fonts behavior).
@@ -216,9 +246,9 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
     }
   }
 
-  const outDir = resolve(opts.out ?? "out");
+  const outDir = resolve(eff.out ?? "out");
   mkdirSync(outDir, { recursive: true });
-  const base = opts.basename ?? "document";
+  const base = eff.basename ?? "document";
   const typPath = join(outDir, `${base}.typ`);
   const pdfPath = join(outDir, `${base}.pdf`);
   writeFileSync(typPath, rendered.typst, "utf8");
@@ -232,15 +262,15 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
     root,
     fontPaths,
     packagePath,
-    pdfStandard: opts.pdfStandard,
+    pdfStandard: eff.pdfStandard,
   });
   warnings.push(...parseTypstStderr(stderr));
 
   // Per-page PNGs for the visual feedback loop.
   let pageImages: string[] = [];
-  if (opts.png) {
+  if (eff.png) {
     const pattern = join(outDir, `${base}-page-{0p}.png`);
-    compileToPng({ bin: typst.bin, input: typPath, output: pattern, root, fontPaths, packagePath, ppi: opts.pngPpi });
+    compileToPng({ bin: typst.bin, input: typPath, output: pattern, root, fontPaths, packagePath, ppi: eff.pngPpi });
     pageImages = readdirSync(outDir)
       .filter((f) => f.startsWith(`${base}-page-`) && f.endsWith(".png"))
       .sort()
@@ -249,13 +279,14 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
 
   const manifest: Manifest = {
     schemaVersion: rendered.validated.schemaVersion ?? SCHEMA_VERSION,
+    profile: profileName,
     pages: pageImages.length || countPdfPages(pdfPath),
     blocks: rendered.blockCount,
     theme: rendered.themeName,
     template: rendered.templateName,
     assets: rendered.assets,
     typstVersion: typst.version,
-    ...(opts.pdfStandard ? { pdfStandard: opts.pdfStandard } : {}),
+    ...(eff.pdfStandard ? { pdfStandard: eff.pdfStandard } : {}),
     hashes: {
       spec: sha256(stableStringify(rendered.validated)),
       typst: sha256(rendered.typst),
@@ -263,7 +294,7 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
     },
   };
 
-  if (opts.strict && warnings.length) {
+  if (eff.strict && warnings.length) {
     const detail = warnings.map((w) => `  - [${w.path}] ${w.got}`).join("\n");
     throw new Error(`Strict mode: ${warnings.length} warning(s):\n${detail}`);
   }

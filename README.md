@@ -42,6 +42,34 @@ Two front doors, one block tree:
 - **JSON Schema** — `pdf schema` emits a schema for agent validation and editor autocomplete on spec files.
 - **Any document** — invoices, reports, recipes, cover letters, CVs, cheat sheets, study notes — all from the same block vocabulary.
 
+## Profiles — one setup per context
+
+A **profile** is a named context (business, academic, side-project) = a theme **+ document defaults + reusable identity**. Set it once; then your specs only carry the per-document content.
+
+```bash
+pdf onboard                 # interactive: name, brand color/logo, seller, default
+pdf profile list            # ★ marks the default
+pdf profile use academic    # switch your default
+pdf build invoice.yaml                      # uses your default profile
+pdf build invoice.yaml --profile business   # pick one explicitly
+pdf build paper.yaml --no-profile           # ignore profiles entirely
+```
+
+A profile (in `~/.config/pdf-builder/profiles/` globally, or `./.pdfbuilder/` per project):
+
+```yaml
+name: business
+theme: acme                       # a brand theme (colors/fonts/logo)
+defaults: { lang: he, dir: rtl }
+template:
+  invoice:
+    seller: { name: "Acme Ltd", taxId: "514…" }   # never repeated in a spec
+    currency: ILS
+    vat: { mode: standard }
+```
+
+Now an invoice spec is just the content — `client` + line items — and the profile fills the seller, tax ID, brand, language, and VAT. **The spec always wins on conflicts**, and the manifest records which profile rendered the PDF. Your private business identity lives in one profile, not in every spec you share.
+
 ## Branding — clone and make it yours (no code)
 
 Define a theme file that inherits a built-in and overrides only what differs:

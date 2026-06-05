@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { dirname, resolve, isAbsolute, join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { formatZodError, SpecError } from "../spec/validate.js";
+import { deepMerge } from "../util/merge.js";
 import type { ThemeTokens } from "./types.js";
 import { defaultTheme } from "./default.js";
 import { studyTheme } from "./study.js";
@@ -56,20 +57,6 @@ const ThemePatchSchema = z
   .strict();
 
 export type ThemePatch = z.infer<typeof ThemePatchSchema>;
-
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
-/** Deep-merge a patch over a base, recursing into plain objects. */
-function deepMerge<T>(base: T, patch: Record<string, unknown>): T {
-  const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
-  for (const [k, v] of Object.entries(patch)) {
-    if (v === undefined) continue;
-    out[k] = isPlainObject(v) && isPlainObject(out[k]) ? deepMerge(out[k], v) : v;
-  }
-  return out as T;
-}
 
 function findThemeFile(name: string, dirs: string[]): string | null {
   // Explicit path (has separator or extension).

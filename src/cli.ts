@@ -9,6 +9,16 @@ import { listTemplates } from "./templates/index.js";
 import { SpecError } from "./spec/validate.js";
 import { specJsonSchema } from "./spec/jsonschema.js";
 import { resolveTypst, listFontFamilies, TypstMissingError, TypstCompileError } from "./typst.js";
+import {
+  loadProfile,
+  listProfiles,
+  getDefaultProfile,
+  setDefaultProfile,
+  writeProfile,
+  writeThemeFile,
+} from "./profile/load.js";
+import { profileInitTemplate } from "./profile/scaffold.js";
+import { runOnboard } from "./profile/onboard.js";
 
 interface Flags {
   _: string[];
@@ -17,7 +27,9 @@ interface Flags {
 
 // Flags that never take a value, so a following positional isn't swallowed
 // (e.g. `pdf build --png file.yaml`).
-const BOOLEAN_FLAGS = new Set(["png", "strict", "help", "json", "emit-typst", "emit-expanded-spec"]);
+const BOOLEAN_FLAGS = new Set([
+  "png", "strict", "help", "json", "emit-typst", "emit-expanded-spec", "no-profile", "local", "global",
+]);
 
 /** Repeated flags accumulate into arrays (e.g. multiple --font-path). */
 function parseArgs(argv: string[]): Flags {
@@ -60,7 +72,14 @@ Usage:
                    [--out <dir>] [--basename <name>] [--png] [--png-ppi <n>]
                    [--pdf-standard <a-2b|ua-1|...>] [--strict] [--json]
                    [--emit-typst] [--emit-expanded-spec]
+  pdf build <file> [--profile <name>] [--no-profile]   (uses your default profile)
   pdf new [--template <name>] [--out <file>]
+  pdf onboard                          set up a profile interactively
+  pdf init                             scaffold a project (.pdfbuilder + sample)
+  pdf profile init <name> [--local]    scaffold a profile file (global by default)
+  pdf profile list                     list profiles (★ = default)
+  pdf profile use <name> [--local]     set the default profile
+  pdf profile show <name>              print a profile
   pdf themes
   pdf templates
   pdf fonts [--font-path <dir>]        list font families Typst can see
@@ -68,14 +87,17 @@ Usage:
   pdf schema [--out <file>]            emit the spec's JSON Schema
 
 Examples:
-  pdf build invoice.yaml --theme default --png
-  pdf build report.yaml --theme ./themes/acme.yaml --font-path ./brand-fonts
+  pdf onboard                                     # create "business" profile
+  pdf build invoice.yaml                          # uses your default profile
+  pdf build invoice.yaml --profile academic       # plain, no brand
   pdf build invoice.yaml --pdf-standard a-2b      # PDF/A-2b conformance
   pdf build report.yaml --emit-typst              # debug: print generated Typst
   pdf build report.yaml --json                    # machine-readable result/errors
 `;
 
 function buildOptions(flags: Flags, file: string): BuildOptions {
+  // Profile: explicit --profile, else the configured default, unless --no-profile.
+  const profile = flags["no-profile"] ? undefined : (str(flags.profile) ?? getDefaultProfile() ?? undefined);
   return {
     theme: str(flags.theme),
     themesDir: multi(flags["themes-dir"]),
@@ -86,6 +108,7 @@ function buildOptions(flags: Flags, file: string): BuildOptions {
     pngPpi: str(flags["png-ppi"]) ? Number(str(flags["png-ppi"])) : undefined,
     strict: Boolean(flags.strict),
     pdfStandard: str(flags["pdf-standard"]),
+    profile,
   };
 }
 
@@ -238,6 +261,68 @@ function cmdSchema(flags: Flags) {
   }
 }
 
+function cmdProfile(flags: Flags) {
+  const argv = flags._ as string[];
+  const sub = argv[1];
+  const global = !flags.local; // global by default; --local for project-local
+  switch (sub) {
+    case "init": {
+      const name = argv[2];
+      if (!name) fail("profile init: missing <name>.  e.g. pdf profile init business");
+      const file = writeProfile(name, profileInitTemplate(name), { global });
+      process.stdout.write(`Wrote ${file}\nEdit it, then: pdf build <file> --profile ${name}\n`);
+      return;
+    }
+    case "list": {
+      const def = getDefaultProfile();
+      const profiles = listProfiles();
+      if (!profiles.length) {
+        process.stdout.write("No profiles yet. Create one: pdf onboard  (or: pdf profile init <name>)\n");
+        return;
+      }
+      for (const p of profiles) {
+        const mark = p.name === def ? "★" : " ";
+        process.stdout.write(`${mark} ${p.name.padEnd(16)} ${p.scope}\n`);
+      }
+      return;
+    }
+    case "use": {
+      const name = argv[2];
+      if (!name) fail("profile use: missing <name>.");
+      loadProfile(name); // validate it exists/parses before setting
+      const file = setDefaultProfile(name, { global });
+      process.stdout.write(`Default profile set to "${name}" (${file})\n`);
+      return;
+    }
+    case "show": {
+      const name = argv[2];
+      if (!name) fail("profile show: missing <name>.");
+      const { profile, file } = loadProfile(name);
+      process.stdout.write(`# ${file}\n${JSON.stringify(profile, null, 2)}\n`);
+      return;
+    }
+    default:
+      fail(`Unknown 'profile' subcommand "${sub ?? ""}". Try: init | list | use | show`);
+  }
+}
+
+function cmdInit() {
+  const file = writeProfile("local", profileInitTemplate("local"), { global: false });
+  const sample = "example.yaml";
+  writeFileSync(
+    sample,
+    [
+      "theme: default",
+      "blocks:",
+      "  - { type: heading, level: 1, text: Hello }",
+      "  - { type: text, text: Body with inline math $E = mc^2$. }",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  process.stdout.write(`Scaffolded a project:\n  ${file}\n  ${sample}\n\nRender it: pdf build ${sample} --png\n`);
+}
+
 function cmdThemes() {
   for (const t of listThemes()) process.stdout.write(`${t.name.padEnd(12)} ${t.description}\n`);
 }
@@ -246,7 +331,7 @@ function cmdTemplates() {
   for (const t of listTemplates()) process.stdout.write(`${t.name.padEnd(12)} ${t.description}\n`);
 }
 
-function main() {
+async function main() {
   const flags = parseArgs(process.argv.slice(2));
   const argv = flags._ as string[];
   const cmd = argv[0];
@@ -255,6 +340,12 @@ function main() {
       return cmdBuild(flags);
     case "new":
       return cmdNew(flags);
+    case "onboard":
+      return runOnboard();
+    case "init":
+      return cmdInit();
+    case "profile":
+      return cmdProfile(flags);
     case "themes":
       return cmdThemes();
     case "templates":
@@ -276,4 +367,7 @@ function main() {
   }
 }
 
-main();
+main().catch((e) => {
+  process.stderr.write(`${(e as Error).message}\n`);
+  process.exit(1);
+});
