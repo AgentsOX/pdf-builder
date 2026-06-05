@@ -77,4 +77,17 @@ describe.skipIf(!haveCli || !hasTypst())("cli build success contract", () => {
     expect(j.manifest.hashes.output).toMatch(/^[0-9a-f]{64}$/);
     expect(r.code).toBe(0);
   });
+
+  it("-o <file.pdf> writes that exact file", () => {
+    const out = join("out", "cli", "named.pdf");
+    const j = JSON.parse(run(["build", "examples/invoice.yaml", "--no-profile", "-o", out, "--json"]).stdout);
+    expect(j.ok).toBe(true);
+    expect(j.pdfPath).toBe(resolve(out));
+    expect(existsSync(resolve(out))).toBe(true);
+  });
+
+  it("-o <dir> keeps the input's name", () => {
+    const j = JSON.parse(run(["build", "examples/invoice.yaml", "--no-profile", "-o", join("out", "cli", "od"), "--json"]).stdout);
+    expect(j.pdfPath).toBe(resolve("out", "cli", "od", "invoice.pdf"));
+  });
 });

@@ -152,7 +152,18 @@ pdf schema           write the spec's JSON Schema
 pdf guide            print the full playbook (see below)
 ```
 
-`build` flags: `--theme <name|path>`, `--themes-dir <dir>`, `--font-path <dir>` (repeatable), `--out <dir>`, `--basename <name>`, `--png`, `--png-ppi <n>`, `--pdf-standard <a-2b|ua-1>`, `--strict`, `--json`, `--emit-typst`, `--emit-expanded-spec`.
+**Output location.** By default the PDF lands in `out/`, named after the input file. Point it anywhere with `-o`/`--output`:
+
+```bash
+pdf build invoice.yaml                     # → out/invoice.pdf
+pdf build invoice.yaml -o report.pdf       # → report.pdf (exact file)
+pdf build invoice.yaml -o ~/Desktop/       # → ~/Desktop/invoice.pdf (folder, name kept)
+pdf build invoice.yaml -o ~/Desktop/q2.pdf # → ~/Desktop/q2.pdf
+```
+
+A `.pdf` path sets the exact file; anything else is treated as a directory. (The granular `--out <dir>` + `--basename <name>` still work and take precedence.) Every build prints the final absolute path, and returns it as `pdfPath` under `--json`.
+
+`build` flags: `-o, --output <file|dir>`, `--theme <name|path>`, `--themes-dir <dir>`, `--font-path <dir>` (repeatable), `--out <dir>`, `--basename <name>`, `--png`, `--png-ppi <n>`, `--pdf-standard <a-2b|ua-1>`, `--strict`, `--json`, `--emit-typst`, `--emit-expanded-spec`.
 
 ## Determinism
 

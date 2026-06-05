@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { writeFileSync } from "node:fs";
-import { basename, extname } from "node:path";
+import { basename, extname, dirname } from "node:path";
 import { stringify as toYaml } from "yaml";
 import { bundledFontsDir } from "./paths.js";
 import { build, renderTypst, expandSpec, type BuildOptions } from "./pipeline.js";
@@ -28,23 +28,30 @@ const BOOLEAN_FLAGS = new Set([
   "png", "strict", "help", "json", "emit-typst", "emit-expanded-spec", "no-profile", "local", "global",
 ]);
 
+/** Short flag aliases, e.g. `-o` → `--output`. */
+const SHORT_FLAGS: Record<string, string> = { o: "output" };
+
 /** Parse argv into positionals + flags. Repeated flags accumulate into arrays. */
 function parseArgs(argv: string[]): Flags {
   const flags: Flags = { positionals: [] };
+  const set = (key: string, val: string | boolean) => {
+    const prev = flags[key];
+    if (prev === undefined) flags[key] = val;
+    else if (Array.isArray(prev)) prev.push(String(val));
+    else flags[key] = [String(prev), String(val)];
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a.startsWith("--")) {
-      const key = a.slice(2);
-      const next = argv[i + 1];
-      const takesValue = !BOOLEAN_FLAGS.has(key) && next !== undefined && !next.startsWith("--");
-      const val: string | boolean = takesValue ? (i++, next) : true;
-      const prev = flags[key];
-      if (prev === undefined) flags[key] = val;
-      else if (Array.isArray(prev)) prev.push(String(val));
-      else flags[key] = [String(prev), String(val)];
-    } else {
+    const isLong = a.startsWith("--");
+    const isShort = !isLong && a.length > 1 && a[0] === "-" && !/^-\d/.test(a);
+    if (!isLong && !isShort) {
       flags.positionals.push(a);
+      continue;
     }
+    const key = isLong ? a.slice(2) : SHORT_FLAGS[a.slice(1)] ?? a.slice(1);
+    const next = argv[i + 1];
+    const takesValue = !BOOLEAN_FLAGS.has(key) && next !== undefined && !next.startsWith("-");
+    set(key, takesValue ? (i++, next) : true);
   }
   return flags;
 }
@@ -65,10 +72,11 @@ Agents: run \`pdf guide --json\` first — it returns the whole playbook (workfl
 blocks, themes/templates/profiles, recipes, example, JSON Schema). Then build.
 
 Build:
-  pdf build <file> [--profile <name> | --no-profile] [--theme <name>] [--out <dir>]
+  pdf build <file> [-o <file|dir>] [--profile <name> | --no-profile] [--theme <name>]
       [--png] [--pdf-standard <a-2b|ua-1|…>] [--strict] [--json]
       [--emit-typst | --emit-expanded-spec] [--font-path <dir>]… [--themes-dir <dir>]…
                                        render a spec; uses your default profile
+      -o report.pdf → that file; -o ~/Docs/ → that folder; or --out <dir> + --basename <name>
 
 Profiles (a context = theme + defaults + identity):
   pdf onboard                          set up a profile (interactive)
@@ -99,15 +107,26 @@ Examples:
   pdf build report.yaml --json                # machine-readable result/errors
 `;
 
+/**
+ * Interpret `-o`/`--output`: a path ending in `.pdf` sets the exact file (dir + name);
+ * anything else is treated as the output directory. Explicit `--out`/`--basename` win.
+ */
+function outputOverrides(output: string | undefined): { out?: string; basename?: string } {
+  if (!output) return {};
+  if (/\.pdf$/i.test(output)) return { out: dirname(output) || ".", basename: basename(output, extname(output)) };
+  return { out: output };
+}
+
 function buildOptions(flags: Flags, file: string): BuildOptions {
   // Profile: explicit --profile, else the configured default, unless --no-profile.
   const profile = flags["no-profile"] ? undefined : (asString(flags.profile) ?? getDefaultProfile() ?? undefined);
+  const o = outputOverrides(asString(flags.output));
   return {
     theme: asString(flags.theme),
     themesDir: asList(flags["themes-dir"]),
     fontPaths: asList(flags["font-path"]),
-    out: asString(flags.out),
-    basename: asString(flags.basename) ?? basename(file, extname(file)),
+    out: asString(flags.out) ?? o.out,
+    basename: asString(flags.basename) ?? o.basename ?? basename(file, extname(file)),
     png: Boolean(flags.png),
     pngPpi: asString(flags["png-ppi"]) ? Number(asString(flags["png-ppi"])) : undefined,
     strict: Boolean(flags.strict),
