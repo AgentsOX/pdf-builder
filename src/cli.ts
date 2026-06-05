@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename, extname } from "node:path";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as toYaml } from "yaml";
 import { bundledFontsDir } from "./paths.js";
 import { build, renderTypst, expandSpec, type BuildOptions } from "./pipeline.js";
 import { listThemes } from "./theme/index.js";
@@ -67,32 +67,37 @@ function fail(msg: string): never {
 
 const HELP = `pdf — declarative spec → PDF (Typst)
 
-Usage:
-  pdf build <file> [--theme <name>] [--themes-dir <dir>] [--font-path <dir>]
-                   [--out <dir>] [--basename <name>] [--png] [--png-ppi <n>]
-                   [--pdf-standard <a-2b|ua-1|...>] [--strict] [--json]
-                   [--emit-typst] [--emit-expanded-spec]
-  pdf build <file> [--profile <name>] [--no-profile]   (uses your default profile)
-  pdf new [--template <name>] [--out <file>]
-  pdf onboard                          set up a profile interactively
-  pdf init                             scaffold a project (.pdfbuilder + sample)
-  pdf profile init <name> [--local]    scaffold a profile file (global by default)
+Build:
+  pdf build <file> [--profile <name> | --no-profile] [--theme <name>] [--out <dir>]
+      [--png] [--pdf-standard <a-2b|ua-1|…>] [--strict] [--json]
+      [--emit-typst | --emit-expanded-spec] [--font-path <dir>]…
+                                       render a spec; uses your default profile
+
+Profiles (a context = theme + defaults + identity):
+  pdf onboard                          set up a profile (interactive)
+  pdf profile init <name> [--local]    scaffold a profile file to edit
   pdf profile list                     list profiles (★ = default)
   pdf profile use <name> [--local]     set the default profile
   pdf profile show <name>              print a profile
-  pdf themes
-  pdf templates
-  pdf fonts [--font-path <dir>]        list font families Typst can see
-  pdf theme init <name> [--out <file>] scaffold a brand theme file
-  pdf schema [--out <file>]            emit the spec's JSON Schema
+
+Authoring:
+  pdf init                             scaffold a project (.pdfbuilder + sample)
+  pdf new [--template <name>] [--out <file>]   print a starter spec
+  pdf theme init <name> [--out <file>]         scaffold a brand theme file
+
+Inspect:
+  pdf themes | templates | fonts | schema
+
+For agents: skip the interactive 'onboard' — use 'pdf profile init' (or write a
+profile YAML), and 'pdf build … --json' for machine-readable output. The spec
+contract is 'pdf schema'.
 
 Examples:
-  pdf onboard                                     # create "business" profile
-  pdf build invoice.yaml                          # uses your default profile
-  pdf build invoice.yaml --profile academic       # plain, no brand
-  pdf build invoice.yaml --pdf-standard a-2b      # PDF/A-2b conformance
-  pdf build report.yaml --emit-typst              # debug: print generated Typst
-  pdf build report.yaml --json                    # machine-readable result/errors
+  pdf build invoice.yaml                      # uses your default profile
+  pdf build invoice.yaml --profile academic   # plain, no brand
+  pdf build invoice.yaml --pdf-standard a-2b  # PDF/A-2b conformance
+  pdf build report.yaml --emit-typst          # debug: print generated Typst
+  pdf build report.yaml --json                # machine-readable result/errors
 `;
 
 function buildOptions(flags: Flags, file: string): BuildOptions {
@@ -199,13 +204,13 @@ function cmdNew(flags: Flags) {
   const name = str(flags.template) ?? "freeform";
   const starter = STARTERS[name];
   if (!starter) fail(`new: no starter for "${name}". Try: ${Object.keys(STARTERS).join(", ")}`);
-  const out = JSON.stringify(starter, null, 2);
+  const out = toYaml(starter);
   const dest = str(flags.out);
   if (dest) {
-    writeFileSync(dest, out + "\n", "utf8");
+    writeFileSync(dest, out, "utf8");
     process.stdout.write(`Wrote ${dest}\n`);
   } else {
-    process.stdout.write(out + "\n");
+    process.stdout.write(out);
   }
 }
 

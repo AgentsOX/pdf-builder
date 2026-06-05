@@ -66,23 +66,26 @@ export function brandThemeYaml(b: BrandAnswers): string {
   return toYaml(theme);
 }
 
-/** Commented starter for `pdf profile init <name>` (meant to be hand-edited). */
+/**
+ * Commented starter for `pdf profile init <name>` — also the non-interactive
+ * on-ramp for scripts/agents. All fields are optional; delete what you don't need.
+ */
 export function profileInitTemplate(name: string): string {
-  return `# Profile: ${name}
-# A profile = theme + document defaults + reusable identity for a context.
-# Use:           pdf build invoice.yaml --profile ${name}
-# Make default:  pdf profile use ${name}
+  return `# Profile "${name}" — a context (business / academic / side-project).
+# A profile = theme + document defaults + reusable identity.
+# Apply:        pdf build <spec>.yaml --profile ${name}
+# Make default: pdf profile use ${name}
 
-# theme: ${name}              # a brand theme (see: pdf theme init); omit for the plain default
-out: out                      # default output directory
-# pdfStandard: a-2b           # enforce PDF/A on every render
+# theme: ${name}            # brand theme (see: pdf theme init); omit for plain "default"
+out: out                    # default output directory
+# pdfStandard: a-2b         # a-1b | a-2b | a-3b | a-4 | ua-1 — enforce on every render
 
 defaults:
-  lang: en
-  dir: ltr
-  math: latex
+  lang: en                  # any language code; he/ar/fa imply RTL
+  dir: ltr                  # ltr | rtl
+  math: latex               # latex | typst
 
-# Reusable identity, deep-merged UNDER each spec's data (the spec still wins):
+# Reusable identity, deep-merged UNDER each spec's data (the spec always wins):
 template:
   invoice:
     seller:
@@ -91,6 +94,6 @@ template:
       # taxId: "..."
       # address: "..."
     currency: USD
-    vat: { mode: exempt }
+    vat: { mode: exempt }   # exempt | standard
 `;
 }
