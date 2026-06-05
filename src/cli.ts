@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { basename, extname } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { bundledFontsDir } from "./paths.js";
-import { build } from "./pipeline.js";
+import { build, renderTypst, expandSpec, type BuildOptions } from "./pipeline.js";
 import { listThemes } from "./theme/index.js";
 import { listTemplates } from "./templates/index.js";
 import { SpecError } from "./spec/validate.js";
@@ -17,7 +17,7 @@ interface Flags {
 
 // Flags that never take a value, so a following positional isn't swallowed
 // (e.g. `pdf build --png file.yaml`).
-const BOOLEAN_FLAGS = new Set(["png", "strict", "help"]);
+const BOOLEAN_FLAGS = new Set(["png", "strict", "help", "json", "emit-typst", "emit-expanded-spec"]);
 
 /** Repeated flags accumulate into arrays (e.g. multiple --font-path). */
 function parseArgs(argv: string[]): Flags {
@@ -57,7 +57,9 @@ const HELP = `pdf — declarative spec → PDF (Typst)
 
 Usage:
   pdf build <file> [--theme <name>] [--themes-dir <dir>] [--font-path <dir>]
-                   [--out <dir>] [--png] [--png-ppi <n>] [--strict]
+                   [--out <dir>] [--basename <name>] [--png] [--png-ppi <n>]
+                   [--pdf-standard <a-2b|ua-1|...>] [--strict] [--json]
+                   [--emit-typst] [--emit-expanded-spec]
   pdf new [--template <name>] [--out <file>]
   pdf themes
   pdf templates
@@ -68,37 +70,37 @@ Usage:
 Examples:
   pdf build invoice.yaml --theme default --png
   pdf build report.yaml --theme ./themes/acme.yaml --font-path ./brand-fonts
-  pdf theme init acme --out themes/acme.yaml
+  pdf build invoice.yaml --pdf-standard a-2b      # PDF/A-2b conformance
+  pdf build report.yaml --emit-typst              # debug: print generated Typst
+  pdf build report.yaml --json                    # machine-readable result/errors
 `;
+
+function buildOptions(flags: Flags, file: string): BuildOptions {
+  return {
+    theme: str(flags.theme),
+    themesDir: multi(flags["themes-dir"]),
+    fontPaths: multi(flags["font-path"]),
+    out: str(flags.out),
+    basename: str(flags.basename) ?? basename(file, extname(file)),
+    png: Boolean(flags.png),
+    pngPpi: str(flags["png-ppi"]) ? Number(str(flags["png-ppi"])) : undefined,
+    strict: Boolean(flags.strict),
+    pdfStandard: str(flags["pdf-standard"]),
+  };
+}
 
 function cmdBuild(flags: Flags) {
   const file = (flags._ as string[])[1];
   if (!file) fail("build: missing <file>.\n\n" + HELP);
+  const json = Boolean(flags.json);
 
-  let spec: unknown;
-  try {
-    spec = loadSpec(file);
-  } catch (e) {
-    fail(`Could not read/parse ${file}: ${(e as Error).message}`);
-  }
-
-  try {
-    const result = build(spec, {
-      theme: str(flags.theme),
-      themesDir: multi(flags["themes-dir"]),
-      fontPaths: multi(flags["font-path"]),
-      out: str(flags.out),
-      basename: str(flags.basename) ?? basename(file, extname(file)),
-      png: Boolean(flags.png),
-      pngPpi: str(flags["png-ppi"]) ? Number(str(flags["png-ppi"])) : undefined,
-      strict: Boolean(flags.strict),
-    });
-    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
-    if (result.warnings.length) {
-      process.stderr.write(`\n${result.warnings.length} warning(s):\n`);
-      for (const w of result.warnings) process.stderr.write(`  - [${w.path}] ${w.fix}\n`);
+  const emitError = (e: unknown) => {
+    if (json) {
+      const issues = e instanceof SpecError ? e.issues : undefined;
+      const stderr = e instanceof TypstCompileError ? e.stderr : undefined;
+      process.stdout.write(JSON.stringify({ ok: false, error: (e as Error).message, issues, stderr }, null, 2) + "\n");
+      process.exit(1);
     }
-  } catch (e) {
     if (e instanceof SpecError) {
       process.stderr.write("Invalid spec:\n");
       for (const i of e.issues) {
@@ -109,6 +111,41 @@ function cmdBuild(flags: Flags) {
     if (e instanceof TypstMissingError) fail(e.message);
     if (e instanceof TypstCompileError) fail(`Typst compile failed:\n${e.stderr}`);
     fail((e as Error).message);
+  };
+
+  try {
+    const spec = loadSpec(file);
+    const opts = buildOptions(flags, file);
+
+    // Debug front doors — no engine needed.
+    if (flags["emit-expanded-spec"]) {
+      const ex = expandSpec(spec, opts);
+      process.stdout.write(
+        JSON.stringify(
+          { schemaVersion: ex.validated.schemaVersion, theme: ex.themeName, template: ex.templateName, blocks: ex.blocks },
+          null,
+          2,
+        ) + "\n",
+      );
+      return;
+    }
+    if (flags["emit-typst"]) {
+      process.stdout.write(renderTypst(spec, opts).typst);
+      return;
+    }
+
+    const result = build(spec, opts);
+    if (json) {
+      process.stdout.write(JSON.stringify({ ok: true, ...result }, null, 2) + "\n");
+    } else {
+      process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+      if (result.warnings.length) {
+        process.stderr.write(`\n${result.warnings.length} warning(s):\n`);
+        for (const w of result.warnings) process.stderr.write(`  - [${w.path}] ${w.fix}\n`);
+      }
+    }
+  } catch (e) {
+    emitError(e);
   }
 }
 

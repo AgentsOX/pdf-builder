@@ -137,8 +137,13 @@ export const BlockSchema: z.ZodType<Block> = z.lazy(() =>
  *  - template path: { template, data } — a template expands data into blocks
  *  - freeform path: { blocks } — blocks authored directly
  */
+/** Current spec contract version. Bump on breaking spec changes; add a migration. */
+export const SCHEMA_VERSION = 1;
+
 export const SpecSchema = z
   .object({
+    /** Spec contract version. Defaults to the current version when omitted. */
+    schemaVersion: z.number().int().positive().optional(),
     template: z.string().optional(),
     data: z.unknown().optional(),
     theme: z.string().optional(),

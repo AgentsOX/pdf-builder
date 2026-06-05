@@ -47,12 +47,9 @@ describe("invoice label localization", () => {
 });
 
 describe.skipIf(!hasTypst())("production renders (showcase)", () => {
-  const render = (name: string) =>
-    build(parseYaml(readFileSync(join("examples", `${name}.yaml`), "utf8")), {
-      out: join("out", "test"),
-      basename: name,
-      png: true,
-    });
+  const OUT = join("out", "test");
+  const loadExample = (name: string) => parseYaml(readFileSync(join("examples", `${name}.yaml`), "utf8"));
+  const render = (name: string) => build(loadExample(name), { out: OUT, basename: name, png: true });
 
   it("renders the RTL Hebrew invoice with correct totals and no spurious warnings", () => {
     const r = render("hebrew-invoice");
@@ -75,5 +72,21 @@ describe.skipIf(!hasTypst())("production renders (showcase)", () => {
     const r = render("report");
     expect(existsSync(r.pdf_path)).toBe(true);
     expect(r.warnings).toHaveLength(0);
+  });
+
+  it("manifest carries deterministic content hashes + schemaVersion", () => {
+    const a = build(loadExample("invoice"), { out: OUT, basename: "hash-a" });
+    const b = build(loadExample("invoice"), { out: OUT, basename: "hash-b" });
+    expect(a.manifest.schemaVersion).toBe(1);
+    expect(a.manifest.hashes.spec).toMatch(/^[0-9a-f]{64}$/);
+    expect(a.manifest.hashes.output).toBe(b.manifest.hashes.output);
+    expect(a.manifest.hashes.typst).toBe(b.manifest.hashes.typst);
+  });
+
+  it("enforces PDF/A conformance when requested", () => {
+    const r = build(loadExample("invoice"), { out: OUT, basename: "pdfa", pdfStandard: "a-2b" });
+    expect(r.manifest.pdfStandard).toBe("a-2b");
+    const bytes = readFileSync(r.pdf_path, "latin1");
+    expect(bytes).toContain("pdfaid"); // PDF/A identification metadata
   });
 });

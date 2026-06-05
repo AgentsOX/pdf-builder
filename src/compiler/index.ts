@@ -18,6 +18,8 @@ interface Ctx {
   math: MathSyntax;
   /** Base dir for resolving/checking image & logo paths (the Typst root). */
   assetBase?: string;
+  /** Declared asset paths (image/logo srcs), for the manifest. */
+  assets: string[];
 }
 
 /** Wrap emitted content as a Typst content block `[ ... ]`. */
@@ -102,7 +104,10 @@ function emitBlock(block: Block, ctx: Ctx, path: string, depth: number): string 
       const pairs = block.data.map((d) => `(${strLit(d.label)}, ${d.value})`).join(", ");
       let canvas: string;
       if (block.kind === "pie") {
-        canvas = `cetz.canvas({ chart.piechart((${pairs},), value-key: 1, label-key: 0, radius: 3) })`;
+        // Put the value into each label so meaning isn't carried by color alone
+        // and exact numbers are extractable (accessibility).
+        const labeled = block.data.map((d) => `(${strLit(`${d.label} (${d.value})`)}, ${d.value})`).join(", ");
+        canvas = `cetz.canvas({ chart.piechart((${labeled},), value-key: 1, label-key: 0, radius: 3) })`;
       } else if (block.kind === "line") {
         const ticks = block.data.map((d, i) => `(${i}, [${emitInline(d.label, math)}])`).join(", ");
         const pts = block.data.map((d, i) => `(${i}, ${d.value})`).join(", ");
@@ -115,6 +120,7 @@ function emitBlock(block: Block, ctx: Ctx, path: string, depth: number): string 
 
     case "image": {
       let src = block.src;
+      ctx.assets.push(block.src);
       if (ctx.assetBase) {
         const a = resolveAsset(src, ctx.assetBase);
         if (a.outsideRoot) {
@@ -231,6 +237,8 @@ export interface CompileResult {
   typst: string;
   warnings: Issue[];
   blockCount: number;
+  /** Declared image/logo asset paths (deduped), for the manifest. */
+  assets: string[];
 }
 
 /**
@@ -240,7 +248,7 @@ export interface CompileResult {
  */
 export function compileDocument(blocks: Block[], theme: ThemeTokens, opts: CompileOptions = {}): CompileResult {
   const math: MathSyntax = opts.math ?? "latex";
-  const ctx: Ctx = { theme, warnings: [], math, assetBase: opts.assetBase };
+  const ctx: Ctx = { theme, warnings: [], math, assetBase: opts.assetBase, assets: [] };
 
   let header = blocks.find((b): b is HeaderBlock => b.type === "header");
   const footer = blocks.find((b): b is FooterBlock => b.type === "footer");
@@ -250,6 +258,7 @@ export function compileDocument(blocks: Block[], theme: ThemeTokens, opts: Compi
   if (header && opts.assetBase) {
     const rawLogo = header.logo ?? theme.logo;
     if (rawLogo) {
+      ctx.assets.push(rawLogo);
       const a = resolveAsset(rawLogo, opts.assetBase);
       if (a.outsideRoot) {
         ctx.warnings.push({
@@ -281,5 +290,6 @@ export function compileDocument(blocks: Block[], theme: ThemeTokens, opts: Compi
     typst: `${importLine}${preamble}\n${body}\n`,
     warnings: ctx.warnings,
     blockCount: blocks.length,
+    assets: Array.from(new Set(ctx.assets)),
   };
 }

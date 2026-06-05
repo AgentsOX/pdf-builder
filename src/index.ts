@@ -1,10 +1,10 @@
 /** @agentsox/pdf-builder — declarative spec → deterministic PDF. */
 
-export { build } from "./pipeline.js";
-export type { BuildOptions, BuildResult, Manifest } from "./pipeline.js";
+export { build, expandSpec, renderTypst } from "./pipeline.js";
+export type { BuildOptions, BuildResult, Manifest, ExpandResult, RenderResult } from "./pipeline.js";
 
-export { SpecSchema, BlockSchema } from "./spec/schema.js";
-export type { Spec, Block, CalloutKind, Align, Dir } from "./spec/schema.js";
+export { SpecSchema, BlockSchema, SCHEMA_VERSION } from "./spec/schema.js";
+export type { Spec, Block, CalloutKind, Align, Dir, MathSyntax } from "./spec/schema.js";
 
 export { parseSpec, SpecError } from "./spec/validate.js";
 export type { Issue } from "./spec/validate.js";

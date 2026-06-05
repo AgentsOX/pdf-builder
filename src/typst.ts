@@ -1,9 +1,13 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import type { Issue } from "./spec/validate.js";
 
-/** Minimum Typst version we've validated against (determinism is version-sensitive). */
-export const MIN_TYPST = { major: 0, minor: 12 };
+/**
+ * Pinned Typst major.minor. Output bytes/layout can change between minor
+ * versions, so determinism requires this match. Patch releases are allowed.
+ */
+export const PINNED_TYPST = { major: 0, minor: 14 };
+/** The exact version this release is tested against. */
+export const TESTED_TYPST = "0.14.2";
 
 export class TypstMissingError extends Error {
   constructor() {
@@ -63,22 +67,36 @@ export function parseVersion(s: string): { major: number; minor: number } | null
   return m ? { major: Number(m[1]), minor: Number(m[2]) } : null;
 }
 
-/** Warn (not fail) if the installed version is below the validated floor. */
-export function versionWarnings(info: TypstInfo): Issue[] {
-  const v = parseVersion(info.version);
-  if (!v) return [];
-  if (v.major < MIN_TYPST.major || (v.major === MIN_TYPST.major && v.minor < MIN_TYPST.minor)) {
-    return [
-      {
-        path: "(typst)",
-        expected: `>= ${MIN_TYPST.major}.${MIN_TYPST.minor}.x`,
-        got: info.version,
-        fix: `Upgrade Typst to >= ${MIN_TYPST.major}.${MIN_TYPST.minor} for stable output.`,
-      },
-    ];
+export class TypstVersionError extends Error {
+  constructor(public found: string) {
+    super(
+      `Typst ${PINNED_TYPST.major}.${PINNED_TYPST.minor}.x is required for deterministic output, ` +
+        `but found "${found}". Install ${TESTED_TYPST}, or set PDF_BUILDER_ALLOW_TYPST_MISMATCH=1 ` +
+        `to override (output may differ).`,
+    );
+    this.name = "TypstVersionError";
   }
-  return [];
 }
+
+/**
+ * Enforce the pinned major.minor. Throws unless the version matches or the
+ * override env var is set. Unparseable versions are allowed (best-effort).
+ */
+export function assertTypstVersion(info: TypstInfo): void {
+  if (process.env.PDF_BUILDER_ALLOW_TYPST_MISMATCH) return;
+  const v = parseVersion(info.version);
+  if (!v) return;
+  if (v.major !== PINNED_TYPST.major || v.minor !== PINNED_TYPST.minor) {
+    throw new TypstVersionError(info.version);
+  }
+}
+
+/** PDF standards Typst 0.14 can enforce (`--pdf-standard`). */
+export const ALLOWED_PDF_STANDARDS = [
+  "1.4", "1.5", "1.6", "1.7", "2.0",
+  "a-1b", "a-1a", "a-2b", "a-2u", "a-2a", "a-3b", "a-3u", "a-3a", "a-4", "a-4f", "a-4e",
+  "ua-1",
+] as const;
 
 interface RunOpts {
   bin: string;
@@ -87,10 +105,11 @@ interface RunOpts {
   root: string; // sandbox root for image() includes
   fontPaths?: string[]; // bundled + user font dirs
   packagePath?: string; // vendored Typst package cache (for offline mitex/cetz)
+  pdfStandard?: string; // comma-separated PDF standards (pdf only)
   ppi?: number; // png only
 }
 
-function run({ bin, input, output, root, fontPaths, packagePath, ppi }: RunOpts): { stderr: string } {
+function run({ bin, input, output, root, fontPaths, packagePath, pdfStandard, ppi }: RunOpts): { stderr: string } {
   const args = [
     "compile",
     input,
@@ -103,6 +122,7 @@ function run({ bin, input, output, root, fontPaths, packagePath, ppi }: RunOpts)
   ];
   for (const fp of fontPaths ?? []) if (existsSync(fp)) args.push("--font-path", fp);
   if (packagePath && existsSync(packagePath)) args.push("--package-cache-path", packagePath);
+  if (pdfStandard) args.push("--pdf-standard", pdfStandard);
   if (ppi) args.push("--ppi", String(ppi));
 
   const r = spawnSync(bin, args, { encoding: "utf8" });

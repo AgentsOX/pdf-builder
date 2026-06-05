@@ -104,7 +104,14 @@ pdf theme init <name> [--out <file>]            # scaffold a brand theme
 pdf schema [--out <file>]                        # emit the spec's JSON Schema
 ```
 
-`build` flags: `--theme <name|path>`, `--themes-dir <dir>`, `--font-path <dir>` (repeatable), `--out <dir>`, `--basename <name>`, `--png`, `--png-ppi <n>`, `--strict`.
+`build` flags: `--theme <name|path>`, `--themes-dir <dir>`, `--font-path <dir>` (repeatable), `--out <dir>`, `--basename <name>`, `--png`, `--png-ppi <n>`, `--pdf-standard <a-2b|ua-1|…>`, `--strict`, `--json` (machine-readable result/errors), `--emit-typst`, `--emit-expanded-spec`.
+
+## Determinism & provenance
+
+- **Pinned engine** — requires Typst `0.14.x` (override with `PDF_BUILDER_ALLOW_TYPST_MISMATCH=1`). With `--creation-timestamp 0`, `--ignore-system-fonts`, bundled fonts, and vendored offline packages, the **same spec → byte-identical PDF**.
+- **Manifest** — every build returns `{ schemaVersion, pages, blocks, theme, template, assets, typstVersion, pdfStandard?, hashes: { spec, typst, output } }`, so a render is reproducible and auditable.
+- **Versioned contract** — `spec.schemaVersion` (current: 1); a newer version is rejected with an explicit upgrade message.
+- **PDF standards** — `--pdf-standard a-2b` (PDF/A) or `ua-1` (PDF/UA); non-conformance fails loudly.
 
 ### Example spec (freeform)
 
