@@ -6,6 +6,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-06-05
+
 ### Added
 - Distinct process exit codes per `error.kind` (`validation`=1, `typst_missing`=2,
   `typst_compile`=3, `io`=4, `unknown`=5), so a shell or agent can branch on `$?`
@@ -53,5 +55,6 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Pinned Typst major.minor (hard requirement; override via `PDF_BUILDER_ALLOW_TYPST_MISMATCH`).
 - `--creation-timestamp 0`, `--ignore-system-fonts`, vendored offline packages, bundled fonts.
 
-[Unreleased]: https://github.com/AgentsOX/pdf-builder/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/AgentsOX/pdf-builder/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/AgentsOX/pdf-builder/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/AgentsOX/pdf-builder/releases/tag/v0.1.0
