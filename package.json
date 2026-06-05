@@ -5,12 +5,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/agentsox/pdf-builder.git"
+    "url": "git+https://github.com/AgentsOX/pdf-builder.git"
   },
   "bugs": {
-    "url": "https://github.com/agentsox/pdf-builder/issues"
+    "url": "https://github.com/AgentsOX/pdf-builder/issues"
   },
-  "homepage": "https://github.com/agentsox/pdf-builder#readme",
+  "homepage": "https://github.com/AgentsOX/pdf-builder#readme",
   "type": "module",
   "bin": {
     "pdf": "dist/cli.js"

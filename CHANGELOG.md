@@ -27,5 +27,5 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Pinned Typst major.minor (hard requirement; override via `PDF_BUILDER_ALLOW_TYPST_MISMATCH`).
 - `--creation-timestamp 0`, `--ignore-system-fonts`, vendored offline packages, bundled fonts.
 
-[Unreleased]: https://github.com/agentsox/pdf-builder/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/agentsox/pdf-builder/releases/tag/v0.1.0
+[Unreleased]: https://github.com/AgentsOX/pdf-builder/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/AgentsOX/pdf-builder/releases/tag/v0.1.0
