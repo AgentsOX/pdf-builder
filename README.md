@@ -1,5 +1,9 @@
 # @agentsox/pdf-builder
 
+[![npm](https://img.shields.io/npm/v/@agentsox/pdf-builder)](https://www.npmjs.com/package/@agentsox/pdf-builder)
+[![CI](https://github.com/agentsox/pdf-builder/actions/workflows/ci.yml/badge.svg)](https://github.com/agentsox/pdf-builder/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/npm/l/@agentsox/pdf-builder)](./LICENSE)
+
 An **agent-first CLI that turns a declarative document spec into a correct, branded PDF.**
 
 Describe *what the page contains* — headings, tables, totals, equations, charts — and the tool renders it deterministically with [Typst](https://typst.app). It's built so an LLM agent can produce a single structured file and get a perfect PDF back, with a tight see-and-correct loop and no silent failures.
