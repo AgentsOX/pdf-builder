@@ -171,6 +171,12 @@ data:
     - { description: "FAQ bot setup", qty: 1, unitPrice: 1200 }
 ```
 
+## For agents: start with `pdf guide`
+
+`pdf guide --json` returns the entire playbook in one call — workflow, block vocabulary, live themes/templates/profiles, the config **write-paths**, recipes, a worked example, and the JSON Schema. An agent self-onboards from that one command; no system-prompt paste needed.
+
+**The human speaks; the agent runs the CLI.** The user describes their brand in plain language ("we're Acme, teal, VAT-registered, here's my logo"); the agent writes the theme + profile YAML to the `paths` from `pdf guide`, runs `pdf profile use`, and from then on builds are branded. Likewise "summarise these files into one PDF" → the agent reads them, emits a freeform spec, builds, looks, refines. (The interactive `pdf onboard` is just a convenience for a human at a terminal.)
+
 ## For agents: the `--json` contract
 
 `pdf build … --json` prints one stable envelope to stdout (a discriminated union on `ok`) and exits non-zero on failure — no prose to parse:

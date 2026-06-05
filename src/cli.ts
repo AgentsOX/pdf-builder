@@ -19,6 +19,7 @@ import {
 } from "./profile/load.js";
 import { profileInitTemplate } from "./profile/scaffold.js";
 import { runOnboard } from "./profile/onboard.js";
+import { profileSearchDirs, themeSearchDirs } from "./profile/paths.js";
 import { InputError, classifyError } from "./diagnostics.js";
 
 interface Flags {
@@ -77,6 +78,9 @@ function fail(msg: string): never {
 
 const HELP = `pdf — declarative spec → PDF (Typst)
 
+Agents: run \`pdf guide --json\` first — it returns the whole playbook (workflow,
+blocks, themes/templates/profiles, recipes, example, JSON Schema). Then build.
+
 Build:
   pdf build <file> [--profile <name> | --no-profile] [--theme <name>] [--out <dir>]
       [--png] [--pdf-standard <a-2b|ua-1|…>] [--strict] [--json]
@@ -96,12 +100,12 @@ Authoring:
   pdf theme init <name> [--out <file>]         scaffold a brand theme file
 
 Inspect:
+  pdf guide [--json]   everything an agent needs (workflow, blocks, schema, recipes)
   pdf themes | templates | fonts | schema
 
-For agents: skip the interactive 'onboard' — use 'pdf profile init' (or write a
-profile YAML). Add --json to any command (build, profile, themes, templates,
-fonts, theme init) for one stable {ok,…} / {ok:false,error:{kind,…}} envelope.
-The spec contract is 'pdf schema'.
+For agents: start with 'pdf guide --json'. Skip the interactive 'onboard' — use
+'pdf profile init' (or write a profile YAML). Add --json to any command for one
+stable {ok,…} / {ok:false,error:{kind,…}} envelope.
 
 Examples:
   pdf build invoice.yaml                      # uses your default profile
@@ -290,6 +294,133 @@ function cmdSchema(flags: Flags) {
   }
 }
 
+// --- pdf guide: everything an agent needs, self-describing -------------------
+
+const GUIDE_WORKFLOW = [
+  "Write a spec (YAML or JSON). Template path: emit `template:` + `data:` for a known type (see TEMPLATES). Freeform path: emit `blocks: [...]` for anything else.",
+  "Render: `pdf build <file> --png --json`.",
+  "On `{ok:false}`: fix using `error.kind` and each `issues[].fix`, then rebuild.",
+  "On `{ok:true}`: OPEN the `page_images` and look at them; fix the spec and rebuild until it's correct.",
+  "You never set colors/fonts (themes do) or compute totals (templates do). Pass `--profile <name>` to apply the user's brand/identity.",
+];
+
+const GUIDE_BLOCKS = [
+  "heading — section title (level 1-4)",
+  "text — paragraph; inline LaTeX math inside $…$",
+  "list — bullets, or ordered: true",
+  "table — header + rows (string cells)",
+  "kv — label→value rows (e.g. totals); emphasis: true to bold",
+  "math — display equation (LaTeX by default; syntax: typst to switch)",
+  "chart — kind: bar|line|pie, data: [{label,value}]",
+  "image — src (relative to cwd), width, alt",
+  "columns — children: [[blocks],[blocks]] side by side",
+  "callout — kind: definition|theorem|tip|note, with title + body blocks",
+  "spacer / pagebreak — spacing and page breaks",
+  "header / footer — page furniture (logo, text, pageNumbers)",
+];
+
+const GUIDE_RECIPES = [
+  {
+    name: "Set up a brand profile from a user's description (NLP → profile)",
+    how:
+      "The USER describes their brand in plain language (company, colors, logo, tax/VAT). YOU do the CLI/file work — never make the user run commands. " +
+      "Steps: (1) get target dirs from `paths` below (use the global dir unless the user wants project-local). " +
+      "(2) Write a brand theme YAML to <themes-dir>/<name>.yaml: `extends: default` + `color: { primary, text }` + optional `fonts: { heading, body }` (only families on the font path — check `pdf fonts`) + optional `logo: <abs path>`. " +
+      "(3) Write a profile YAML to <profiles-dir>/<name>.yaml: `theme: <name>`, `defaults: { lang, dir }`, and `template: { invoice: { seller: {name,email,taxId}, currency, vat: {mode} } }`. " +
+      "(4) `pdf profile use <name>` to make it default, then verify with `pdf profile show <name> --json`. " +
+      "After this, the user just says 'make an invoice for X' and you build with the profile applied.",
+  },
+  {
+    name: "Summarize many files into one PDF",
+    how: "Read each source with your own file tools and pull the key points. Then emit a FREEFORM spec: a title heading, a short intro, one section per source (heading + bullet list or callout), an optional comparison table, and a closing summary. Build with --png, look at the image, refine. Don't dump raw text — structure it.",
+  },
+  {
+    name: "Invoice / receipt",
+    how: "template: invoice with only the per-document data (client + lineItems + number + date). Subtotal/VAT/total are computed for you. Use --profile <name> to fill seller identity, currency, VAT, labels, and brand.",
+  },
+  {
+    name: "Report with charts",
+    how: "Freeform: header, kv (period/author), chart (bar|line|pie), tables, side-by-side callouts via columns, footer with pageNumbers.",
+  },
+  {
+    name: "Study sheet / math notes",
+    how: "Freeform with math blocks and inline $…$ LaTeX; theme: study; callouts for definitions/theorems.",
+  },
+];
+
+const GUIDE_EXAMPLE = {
+  theme: "default",
+  blocks: [
+    { type: "heading", level: 1, text: "Quarterly Summary" },
+    { type: "text", text: "Revenue grew, with $\\Delta = 72\\%$ QoQ." },
+    {
+      type: "chart",
+      kind: "bar",
+      title: "Revenue by month",
+      data: [
+        { label: "Apr", value: 18 },
+        { label: "May", value: 24 },
+        { label: "Jun", value: 31 },
+      ],
+    },
+    { type: "table", header: ["Client", "MRR"], rows: [["Acme", "$1,200"], ["Globex", "$900"]] },
+    { type: "callout", kind: "tip", title: "Takeaway", body: [{ type: "text", text: "Three new clients drove growth." }] },
+  ],
+};
+
+function cmdGuide(flags: Flags) {
+  const themes = listThemes();
+  const templates = listTemplates();
+  const profiles = listProfiles().map((p) => p.name);
+  const defaultProfile = getDefaultProfile();
+  // [local, global] — write profiles/themes here to create them by name.
+  const [profilesLocal, profilesGlobal] = profileSearchDirs();
+  const [themesLocal, themesGlobal] = themeSearchDirs();
+  const paths = {
+    profiles: { global: profilesGlobal, local: profilesLocal },
+    themes: { global: themesGlobal, local: themesLocal },
+  };
+
+  if (flags.json) {
+    return ok({
+      workflow: GUIDE_WORKFLOW,
+      blocks: GUIDE_BLOCKS,
+      themes,
+      templates,
+      profiles: { available: profiles, default: defaultProfile },
+      paths,
+      recipes: GUIDE_RECIPES,
+      example: GUIDE_EXAMPLE,
+      schema: specJsonSchema(),
+    });
+  }
+
+  const w = (s = "") => process.stdout.write(s + "\n");
+  w("pdf-builder — agent guide");
+  w("Turn a declarative spec into a PDF. Self-correct by rendering and looking.\n");
+  w("WORKFLOW");
+  GUIDE_WORKFLOW.forEach((s, i) => w(`  ${i + 1}. ${s}`));
+  w("\nBLOCKS (freeform vocabulary)");
+  GUIDE_BLOCKS.forEach((b) => w(`  - ${b}`));
+  w("\nTHEMES");
+  themes.forEach((t) => w(`  ${t.name.padEnd(10)} ${t.description}`));
+  w("\nTEMPLATES");
+  templates.forEach((t) => w(`  ${t.name.padEnd(10)} ${t.description}`));
+  if (profiles.length) {
+    w("\nPROFILES");
+    profiles.forEach((n) => w(`  ${n}${n === defaultProfile ? " (default)" : ""}`));
+  }
+  w("\nWRITE PATHS (create profiles/themes by name by writing files here)");
+  w(`  profiles: ${paths.profiles.global}  (global)`);
+  w(`            ${paths.profiles.local}  (project-local)`);
+  w(`  themes:   ${paths.themes.global}  (global)`);
+  w("\nRECIPES");
+  GUIDE_RECIPES.forEach((r) => w(`  • ${r.name}\n      ${r.how}`));
+  w("\nEXAMPLE (freeform spec)");
+  w(toYaml(GUIDE_EXAMPLE).replace(/^/gm, "  "));
+  w("CONTRACT: `pdf schema` for the full JSON Schema. Every command accepts --json.");
+}
+
 function cmdProfile(flags: Flags) {
   const argv = flags._ as string[];
   const sub = argv[1];
@@ -391,6 +522,8 @@ async function dispatch(flags: Flags) {
       return fail(`Unknown 'theme' subcommand "${argv[1] ?? ""}". Try: pdf theme init <name>`);
     case "schema":
       return cmdSchema(flags);
+    case "guide":
+      return cmdGuide(flags);
     case undefined:
     case "help":
     case "--help":
