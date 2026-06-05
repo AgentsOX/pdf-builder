@@ -80,12 +80,12 @@ interface RunOpts {
   input: string; // absolute path to the .typ file
   output: string; // absolute path (or {p}-pattern for png)
   root: string; // sandbox root for image() includes
-  fontPath?: string;
-  packagePath?: string; // vendored Typst package cache (for offline mitex)
+  fontPaths?: string[]; // bundled + user font dirs
+  packagePath?: string; // vendored Typst package cache (for offline mitex/cetz)
   ppi?: number; // png only
 }
 
-function run({ bin, input, output, root, fontPath, packagePath, ppi }: RunOpts): { stderr: string } {
+function run({ bin, input, output, root, fontPaths, packagePath, ppi }: RunOpts): { stderr: string } {
   const args = [
     "compile",
     input,
@@ -96,7 +96,7 @@ function run({ bin, input, output, root, fontPath, packagePath, ppi }: RunOpts):
     "0", // pin the PDF date → deterministic output
     "--ignore-system-fonts", // resolve fonts only from bundle/embedded → reproducible
   ];
-  if (fontPath && existsSync(fontPath)) args.push("--font-path", fontPath);
+  for (const fp of fontPaths ?? []) if (existsSync(fp)) args.push("--font-path", fp);
   if (packagePath && existsSync(packagePath)) args.push("--package-cache-path", packagePath);
   if (ppi) args.push("--ppi", String(ppi));
 
@@ -120,6 +120,15 @@ export function compileToPdf(opts: Omit<RunOpts, "ppi">): { stderr: string } {
 
 export function compileToPng(opts: RunOpts): { stderr: string } {
   return run({ ppi: 144, ...opts });
+}
+
+/** List font families Typst can see (bundled + given dirs). For `pdf fonts`. */
+export function listFontFamilies(bin: string, fontPaths: string[]): string[] {
+  const args = ["fonts", "--ignore-system-fonts"];
+  for (const fp of fontPaths) if (existsSync(fp)) args.push("--font-path", fp);
+  const r = spawnSync(bin, args, { encoding: "utf8" });
+  if (r.status !== 0) return [];
+  return Array.from(new Set((r.stdout ?? "").split("\n").map((s) => s.trim()).filter(Boolean))).sort();
 }
 
 /**

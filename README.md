@@ -37,7 +37,31 @@ Two front doors, one block tree:
 - **LaTeX math** — write standard LaTeX (`\frac{d}{dx}`, `\int_a^b`, `\vec{F}`); it's the default math syntax (set `math: typst` for native Typst math, or per-block `syntax`). Rendered via a vendored [mitex](https://github.com/mitex-rs/mitex), so it works **offline and deterministically** — no first-run download.
 - **RTL & LTR** — set `dir: rtl` + `lang` on the document, or `dir` on any block. A Hebrew font (David Libre) is bundled.
 - **Mixed bidi on one line** — Hebrew + English + numbers in the same line resolve correctly via Unicode bidi (e.g. `Total: 2,400 ₪ · Renewal: התחדשות`).
+- **Real charts** — bar/line/pie via vendored [cetz](https://github.com/cetz-package/cetz) (offline), styled with your brand color.
+- **Strict & loud** — unknown/typo'd keys, ragged tables, missing images/logos, and unavailable fonts are reported as `{path → expected → got → fix}`; nothing fails silently.
+- **JSON Schema** — `pdf schema` emits a schema for agent validation and editor autocomplete on spec files.
 - **Any document** — invoices, reports, recipes, cover letters, CVs, cheat sheets, study notes — all from the same block vocabulary.
+
+## Branding — clone and make it yours (no code)
+
+Define a theme file that inherits a built-in and overrides only what differs:
+
+```yaml
+# themes/acme.yaml
+extends: default
+fonts: { heading: "Poppins", body: "Inter" }
+color: { primary: "#E11D48", text: "#111" }
+logo: assets/acme-logo.svg        # relative to this file; shows in the header
+```
+
+```bash
+pdf theme init acme --out themes/acme.yaml   # scaffold a starter
+pdf build report.yaml --theme acme           # searched in ./themes
+pdf build report.yaml --theme acme --font-path ./brand-fonts   # your own fonts
+pdf fonts --font-path ./brand-fonts          # see which families Typst can use
+```
+
+The **same spec** renders in any brand just by switching `--theme` — colors, fonts, chart color, callouts, and logo all follow.
 
 ## Examples
 
@@ -51,7 +75,8 @@ Render any of these with `pdf build examples/<name>.yaml --png`:
 | `study-summary.yaml` | **LaTeX** math, callouts, columns |
 | `physics-cheatsheet.yaml` | dense **LaTeX** formula sheet |
 | `recipe.yaml` | columns, ordered/unordered lists |
-| `report.yaml` | kv, chart (table-stub), tables, callouts |
+| `report.yaml` | kv, real bar chart, tables, callouts |
+| `themes/acme.yaml` | a brand theme (`--theme examples/themes/acme.yaml`) |
 
 ## Install
 
@@ -73,8 +98,13 @@ winget install Typst.Typst # Windows
 pdf build invoice.yaml --theme default --png   # render → PDF + per-page PNGs + manifest
 pdf new --template invoice                      # scaffold a starter spec
 pdf templates                                   # list templates
-pdf themes                                       # list themes
+pdf themes                                       # list built-in themes
+pdf fonts [--font-path <dir>]                    # list available font families
+pdf theme init <name> [--out <file>]            # scaffold a brand theme
+pdf schema [--out <file>]                        # emit the spec's JSON Schema
 ```
+
+`build` flags: `--theme <name|path>`, `--themes-dir <dir>`, `--font-path <dir>` (repeatable), `--out <dir>`, `--basename <name>`, `--png`, `--png-ppi <n>`, `--strict`.
 
 ### Example spec (freeform)
 

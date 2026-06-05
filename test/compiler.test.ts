@@ -77,11 +77,18 @@ describe("compileDocument", () => {
     expect(typst).toContain('#callout("definition"');
   });
 
-  it("warns (does not fail) on charts in v1", () => {
+  it("emits a real cetz chart and imports cetz", () => {
+    const { typst } = compile([{ type: "chart", kind: "bar", data: [{ label: "Jan", value: 1 }] }]);
+    expect(typst).toContain("cetz.canvas");
+    expect(typst).toContain("columnchart");
+    expect(typst).toContain('@preview/cetz');
+  });
+
+  it("flags a ragged table (row/column mismatch)", () => {
     const { warnings } = compile([
-      { type: "chart", kind: "bar", data: [{ label: "Jan", value: 1 }] },
+      { type: "table", header: ["A", "B"], rows: [["1", "2"], ["3"]] },
     ]);
-    expect(warnings.some((w) => String(w.got).includes("chart"))).toBe(true);
+    expect(warnings.some((w) => w.path.includes("rows[1]"))).toBe(true);
   });
 
   it("pulls header/footer into the page setup, out of the flow", () => {

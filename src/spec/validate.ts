@@ -22,6 +22,39 @@ export class SpecError extends Error {
   }
 }
 
+// Every known field name across the spec — used for "did you mean?" hints.
+const KNOWN_KEYS = [
+  "type", "level", "text", "dir", "ordered", "items", "header", "rows", "align",
+  "label", "value", "emphasis", "tex", "syntax", "kind", "title", "body", "data",
+  "src", "width", "alt", "ratios", "children", "size", "logo", "pageNumbers",
+  "template", "theme", "lang", "math", "blocks",
+  "seller", "client", "number", "date", "currency", "vat", "lineItems", "notes",
+  "labels", "description", "qty", "unitPrice", "mode", "rate", "name", "email",
+  "phone", "address", "taxId",
+];
+
+function levenshtein(a: string, b: string): number {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 0; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++)
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+
+function closestKey(key: string): string | null {
+  let best: string | null = null;
+  let bestD = 3; // only suggest within edit distance 2
+  for (const k of KNOWN_KEYS) {
+    const dist = levenshtein(key.toLowerCase(), k.toLowerCase());
+    if (dist < bestD) {
+      bestD = dist;
+      best = k;
+    }
+  }
+  return best;
+}
+
 function getAtPath(root: unknown, path: PropertyKey[]): unknown {
   let cur: unknown = root;
   for (const key of path) {
@@ -39,6 +72,18 @@ function issueFromZod(issue: z.core.$ZodIssue, input: unknown): Issue {
   let fix = issue.message;
 
   switch (issue.code) {
+    case "unrecognized_keys": {
+      const keys = (issue as z.core.$ZodIssueUnrecognizedKeys).keys ?? [];
+      expected = "no unknown keys";
+      const hints = keys
+        .map((k) => {
+          const sugg = closestKey(k);
+          return sugg ? `"${k}" (did you mean "${sugg}"?)` : `"${k}"`;
+        })
+        .join(", ");
+      fix = `Remove unknown key(s) at "${path}": ${hints}.`;
+      return { path: path === "(root)" ? keys.join(", ") : `${path}.${keys.join(",")}`, expected, got: keys, fix };
+    }
     case "invalid_type":
       expected = String((issue as z.core.$ZodIssueInvalidType).expected);
       fix = `Set "${path}" to a ${expected}.`;

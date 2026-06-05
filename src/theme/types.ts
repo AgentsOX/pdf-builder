@@ -15,6 +15,8 @@ export interface CalloutColor {
 export interface ThemeTokens {
   /** Human description, shown by `pdf themes`. */
   description: string;
+  /** Default header logo (path), used when a header block omits its own. */
+  logo?: string;
   page: {
     /** Typst paper name, e.g. "a4" | "us-letter". */
     paper: string;

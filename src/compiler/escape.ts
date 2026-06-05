@@ -17,6 +17,11 @@ export function escapeText(s: string): string {
   return s.replace(SPECIAL, (c) => "\\" + c);
 }
 
+/** A Typst string literal (escaping backslash and quote). */
+export function strLit(s: string): string {
+  return '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+}
+
 /**
  * Wrap a LaTeX/Typst-math source string as a Typst argument. Prefer a raw
  * (backtick) literal so LaTeX backslashes need no escaping; fall back to a

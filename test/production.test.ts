@@ -71,8 +71,9 @@ describe.skipIf(!hasTypst())("production renders (showcase)", () => {
     expect(existsSync(render("bilingual").pdf_path)).toBe(true);
   });
 
-  it("warns honestly that charts are stubbed (no silent failure)", () => {
+  it("renders the report with a real chart and no spurious warnings", () => {
     const r = render("report");
-    expect(r.warnings.some((w) => String(w.got).includes("chart"))).toBe(true);
+    expect(existsSync(r.pdf_path)).toBe(true);
+    expect(r.warnings).toHaveLength(0);
   });
 });

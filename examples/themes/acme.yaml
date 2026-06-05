@@ -1,0 +1,10 @@
+extends: default
+description: Acme brand (teal + grotesk)
+color:
+  primary: "#0d9488"
+  text: "#0f172a"
+  callout:
+    tip: { bg: "#f0fdfa", border: "#0d9488" }
+    note: { bg: "#eef2ff", border: "#4338ca" }
+fonts:
+  heading: "New Computer Modern"

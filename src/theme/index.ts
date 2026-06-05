@@ -1,27 +1,19 @@
 import type { ThemeTokens } from "./types.js";
 import { defaultTheme } from "./default.js";
-import { studyTheme } from "./study.js";
+import { loadTheme, BUILTIN_THEMES, type ThemeLoadOptions } from "./load.js";
 
 export type { ThemeTokens, CalloutColor } from "./types.js";
+export type { ThemeLoadOptions } from "./load.js";
 export { themePreamble } from "./preamble.js";
+export { loadTheme } from "./load.js";
 
-const THEMES: Record<string, ThemeTokens> = {
-  default: defaultTheme,
-  study: studyTheme,
-};
-
-export function getTheme(name = "default"): ThemeTokens {
-  const theme = THEMES[name];
-  if (!theme) {
-    throw new Error(
-      `Unknown theme "${name}". Available: ${Object.keys(THEMES).join(", ")}.`,
-    );
-  }
-  return theme;
+/** Resolve a theme: built-in name, theme file in themesDir, or a path. */
+export function getTheme(name = "default", opts: ThemeLoadOptions = {}): ThemeTokens {
+  return loadTheme(name, opts);
 }
 
 export function listThemes(): { name: string; description: string }[] {
-  return Object.entries(THEMES).map(([name, t]) => ({ name, description: t.description }));
+  return Object.entries(BUILTIN_THEMES).map(([name, t]) => ({ name, description: t.description }));
 }
 
 /**

@@ -12,6 +12,7 @@ import {
   compileToPdf,
   compileToPng,
   filterTypstStderr,
+  listFontFamilies,
   TypstMissingError,
   TypstCompileError,
 } from "./typst.js";
@@ -19,6 +20,8 @@ import {
 export interface BuildOptions {
   /** Theme name; overrides the spec's `theme`. */
   theme?: string;
+  /** Extra directories to search for `--theme <name>`. Default ["./themes"]. */
+  themesDir?: string[];
   /** Output directory (created if missing). Default "out". */
   out?: string;
   /** Base file name (no extension). Default "document". */
@@ -29,8 +32,10 @@ export interface BuildOptions {
   pngPpi?: number;
   /** Treat any warning as fatal. */
   strict?: boolean;
-  /** Font directory; default the bundled fonts/. */
-  fontPath?: string;
+  /** Extra font directories (added to the bundled fonts/). */
+  fontPaths?: string[];
+  /** Root for resolving image/logo paths. Default the current directory. */
+  root?: string;
 }
 
 export interface Manifest {
@@ -65,8 +70,10 @@ function parseTypstStderr(stderr: string): Issue[] {
 function countPdfPages(pdfPath: string): number {
   try {
     const buf = readFileSync(pdfPath, "latin1");
-    const matches = buf.match(/\/Type\s*\/Page(?![s])/g);
-    return matches ? matches.length : 1;
+    const count = buf.match(/\/Type\s*\/Pages\b[^>]*?\/Count\s+(\d+)/) ?? buf.match(/\/Count\s+(\d+)\b[^>]*?\/Type\s*\/Pages/);
+    if (count) return Number(count[1]);
+    const pages = buf.match(/\/Type\s*\/Page(?![s])/g);
+    return pages ? pages.length : 1;
   } catch {
     return 1;
   }
@@ -93,12 +100,17 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
   }
 
   const themeName = opts.theme ?? validated.theme ?? "default";
-  const theme = getTheme(themeName);
+  const theme = getTheme(themeName, { themesDir: opts.themesDir });
+
+  // Root for image/logo paths: the working dir, so `src: assets/logo.png`
+  // resolves relative to where the user runs the command.
+  const root = resolve(opts.root ?? process.cwd());
 
   const compiled = compileDocument(blocks, theme, {
     dir: validated.dir,
     lang: validated.lang,
     math: validated.math,
+    assetBase: root,
   });
   warnings.push(...compiled.warnings);
 
@@ -107,6 +119,24 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
   if (!typst) throw new TypstMissingError();
   warnings.push(...versionWarnings(typst));
 
+  const fontPaths = [join(packageRoot, "fonts"), ...(opts.fontPaths ?? []).map((p) => resolve(p))];
+  const packagePath = join(packageRoot, "vendor", "typst-packages");
+
+  // Font-availability check (matches the render's --ignore-system-fonts behavior).
+  const families = new Set(listFontFamilies(typst.bin, fontPaths).map((f) => f.toLowerCase()));
+  if (families.size) {
+    for (const fam of new Set([theme.fonts.heading, theme.fonts.body, theme.fonts.mono])) {
+      if (fam && !families.has(fam.toLowerCase())) {
+        warnings.push({
+          path: "theme.fonts",
+          expected: `font "${fam}" available`,
+          got: "not found",
+          fix: `Font "${fam}" isn't on any font path. Add it with --font-path, or change the theme.`,
+        });
+      }
+    }
+  }
+
   const outDir = resolve(opts.out ?? "out");
   mkdirSync(outDir, { recursive: true });
   const base = opts.basename ?? "document";
@@ -114,11 +144,8 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
   const pdfPath = join(outDir, `${base}.pdf`);
   writeFileSync(typPath, compiled.typst, "utf8");
 
-  const fontPath = opts.fontPath ?? join(packageRoot, "fonts");
-  const packagePath = join(packageRoot, "vendor", "typst-packages");
-
   try {
-    const { stderr } = compileToPdf({ bin: typst.bin, input: typPath, output: pdfPath, root: outDir, fontPath, packagePath });
+    const { stderr } = compileToPdf({ bin: typst.bin, input: typPath, output: pdfPath, root, fontPaths, packagePath });
     warnings.push(...parseTypstStderr(stderr));
   } catch (e) {
     if (e instanceof TypstCompileError) {
@@ -132,7 +159,7 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
   let pageImages: string[] = [];
   if (opts.png) {
     const pattern = join(outDir, `${base}-page-{0p}.png`);
-    compileToPng({ bin: typst.bin, input: typPath, output: pattern, root: outDir, fontPath, packagePath, ppi: opts.pngPpi });
+    compileToPng({ bin: typst.bin, input: typPath, output: pattern, root, fontPaths, packagePath, ppi: opts.pngPpi });
     pageImages = readdirSync(outDir)
       .filter((f) => f.startsWith(`${base}-page-`) && f.endsWith(".png"))
       .sort()

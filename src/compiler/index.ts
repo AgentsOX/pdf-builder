@@ -1,8 +1,11 @@
 import type { Block, MathSyntax } from "../spec/schema.js";
 import type { ThemeTokens } from "../theme/types.js";
-import { themePreamble, MITEX_IMPORT } from "../theme/preamble.js";
+import { themePreamble, MITEX_IMPORT, CETZ_IMPORT } from "../theme/preamble.js";
 import type { Issue } from "../spec/validate.js";
-import { emitInline, displayMath, hasInlineMath } from "./escape.js";
+import { emitInline, displayMath, hasInlineMath, strLit } from "./escape.js";
+import { resolveAsset } from "./assets.js";
+
+const rgb = (hex: string) => `rgb("${hex}")`;
 
 type HeaderBlock = Extract<Block, { type: "header" }>;
 type FooterBlock = Extract<Block, { type: "footer" }>;
@@ -14,6 +17,8 @@ interface Ctx {
   warnings: Issue[];
   /** Document-default math syntax. */
   math: MathSyntax;
+  /** Base dir for resolving/checking image & logo paths (the Typst root). */
+  assetBase?: string;
 }
 
 /** Wrap emitted content as a Typst content block `[ ... ]`. */
@@ -57,6 +62,15 @@ function emitBlock(block: Block, ctx: Ctx, path: string, depth: number): string 
 
     case "table": {
       const ncols = block.header?.length ?? block.rows[0]?.length ?? 1;
+      const ragged = block.rows.findIndex((r) => r.length !== ncols);
+      if (ragged !== -1) {
+        ctx.warnings.push({
+          path: `${path}.rows[${ragged}]`,
+          expected: `${ncols} cells (to match ${block.header ? "header" : "row 0"})`,
+          got: `${block.rows[ragged].length} cells`,
+          fix: "Give every table row the same number of cells.",
+        });
+      }
       const lines: string[] = [`#table(`, `  columns: ${ncols},`];
       if (block.align) lines.push(`  align: (${block.align.join(", ")}),`);
       if (block.header) {
@@ -84,21 +98,39 @@ function emitBlock(block: Block, ctx: Ctx, path: string, depth: number): string 
       return displayMath(block.tex, block.syntax ?? math);
 
     case "chart": {
-      // v1: render charts as a labelled table and warn — never fail silently.
-      ctx.warnings.push({
-        path,
-        expected: "rendered chart",
-        got: `chart kind "${block.kind}"`,
-        fix: "Charts render as a table in v1; cetz charts are planned.",
-      });
-      const rows = block.data.map((d) => `  [${emitInline(d.label, math)}], [${d.value}],`).join("\n");
       const title = block.title ? `${"=".repeat(3)} ${emitInline(block.title, math)}\n` : "";
-      return `${title}#table(\n  columns: (1fr, auto),\n  align: (left, right),\n  table.header[Label][Value],\n${rows}\n)`;
+      const accent = rgb(theme.color.primary);
+      const pairs = block.data.map((d) => `(${strLit(d.label)}, ${d.value})`).join(", ");
+      let canvas: string;
+      if (block.kind === "pie") {
+        canvas = `cetz.canvas({ chart.piechart((${pairs},), value-key: 1, label-key: 0, radius: 3) })`;
+      } else if (block.kind === "line") {
+        const ticks = block.data.map((d, i) => `(${i}, [${emitInline(d.label, math)}])`).join(", ");
+        const pts = block.data.map((d, i) => `(${i}, ${d.value})`).join(", ");
+        canvas = `cetz.canvas({ plot.plot(size: (12, 6), x-ticks: (${ticks},), y-min: 0, { plot.add((${pts},), mark: "o", style: (stroke: ${accent})) }) })`;
+      } else {
+        canvas = `cetz.canvas({ chart.columnchart((${pairs},), size: (12, 6), bar-style: (fill: ${accent}, stroke: 0.5pt)) })`;
+      }
+      return `${title}#align(center)[#${canvas}]`;
     }
 
     case "image": {
+      let src = block.src;
+      if (ctx.assetBase) {
+        const a = resolveAsset(src, ctx.assetBase);
+        if (!a.exists) {
+          ctx.warnings.push({
+            path: `${path}.src`,
+            expected: "an existing image file",
+            got: block.src,
+            fix: `Image not found relative to ${ctx.assetBase}. Check the path.`,
+          });
+        }
+        src = a.typstPath;
+      }
       const w = block.width ? `, width: ${block.width}` : "";
-      return `#figure(image("${block.src}"${w}))`;
+      const cap = block.alt ? `, caption: [${emitInline(block.alt, math)}]` : "";
+      return `#figure(image("${src}"${w})${cap})`;
     }
 
     case "columns": {
@@ -165,11 +197,26 @@ function needsMitex(blocks: Block[], docMath: MathSyntax): boolean {
   return false;
 }
 
+/** Recursively decide whether the document uses any chart (needs cetz). */
+function needsCetz(blocks: Block[]): boolean {
+  return blocks.some((b) =>
+    b.type === "chart"
+      ? true
+      : b.type === "columns"
+        ? b.children.some(needsCetz)
+        : b.type === "callout"
+          ? needsCetz(b.body)
+          : false,
+  );
+}
+
 export interface CompileOptions {
   dir?: string;
   lang?: string;
   /** Document-default math syntax. Defaults to "latex". */
   math?: MathSyntax;
+  /** Base dir for resolving/checking image & logo paths (the Typst root). */
+  assetBase?: string;
 }
 
 export interface CompileResult {
@@ -185,13 +232,33 @@ export interface CompileResult {
  */
 export function compileDocument(blocks: Block[], theme: ThemeTokens, opts: CompileOptions = {}): CompileResult {
   const math: MathSyntax = opts.math ?? "latex";
-  const ctx: Ctx = { theme, warnings: [], math };
+  const ctx: Ctx = { theme, warnings: [], math, assetBase: opts.assetBase };
 
-  const header = blocks.find((b): b is HeaderBlock => b.type === "header");
+  let header = blocks.find((b): b is HeaderBlock => b.type === "header");
   const footer = blocks.find((b): b is FooterBlock => b.type === "footer");
   const flow = blocks.filter((b) => b.type !== "header" && b.type !== "footer");
 
-  const importLine = needsMitex(blocks, math) ? MITEX_IMPORT + "\n" : "";
+  // Resolve + existence-check the header logo (block logo, else theme logo).
+  if (header && opts.assetBase) {
+    const rawLogo = header.logo ?? theme.logo;
+    if (rawLogo) {
+      const a = resolveAsset(rawLogo, opts.assetBase);
+      if (!a.exists) {
+        ctx.warnings.push({
+          path: "header.logo",
+          expected: "an existing logo file",
+          got: rawLogo,
+          fix: `Logo not found relative to ${opts.assetBase}. Check the path.`,
+        });
+      }
+      header = { ...header, logo: a.typstPath };
+    }
+  }
+
+  const imports = [needsMitex(blocks, math) ? MITEX_IMPORT : null, needsCetz(blocks) ? CETZ_IMPORT : null]
+    .filter(Boolean)
+    .join("\n");
+  const importLine = imports ? imports + "\n" : "";
   const preamble = themePreamble(theme, { header, footer, dir: opts.dir, lang: opts.lang, math });
   const body = flow.map((b, i) => emitBlock(b, ctx, `blocks[${i}]`, 0)).join("\n\n");
 

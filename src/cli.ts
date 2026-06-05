@@ -1,18 +1,20 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync } from "node:fs";
-import { basename, extname } from "node:path";
+import { basename, extname, join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { build } from "./pipeline.js";
 import { listThemes } from "./theme/index.js";
 import { listTemplates } from "./templates/index.js";
 import { SpecError } from "./spec/validate.js";
-import { TypstMissingError, TypstCompileError } from "./typst.js";
+import { specJsonSchema } from "./spec/jsonschema.js";
+import { resolveTypst, listFontFamilies, TypstMissingError, TypstCompileError } from "./typst.js";
 
 interface Flags {
   _: string[];
   [k: string]: string | boolean | string[];
 }
 
+/** Repeated flags accumulate into arrays (e.g. multiple --font-path). */
 function parseArgs(argv: string[]): Flags {
   const flags: Flags = { _: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -20,12 +22,11 @@ function parseArgs(argv: string[]): Flags {
     if (a.startsWith("--")) {
       const key = a.slice(2);
       const next = argv[i + 1];
-      if (next === undefined || next.startsWith("--")) {
-        flags[key] = true;
-      } else {
-        flags[key] = next;
-        i++;
-      }
+      const val = next === undefined || next.startsWith("--") ? true : (i++, next);
+      const prev = flags[key];
+      if (prev === undefined) flags[key] = val;
+      else if (Array.isArray(prev)) prev.push(String(val));
+      else flags[key] = [String(prev), String(val)];
     } else {
       (flags._ as string[]).push(a);
     }
@@ -33,10 +34,12 @@ function parseArgs(argv: string[]): Flags {
   return flags;
 }
 
+const str = (v: Flags[string]): string | undefined => (typeof v === "string" ? v : undefined);
+const multi = (v: Flags[string]): string[] => (v === undefined ? [] : Array.isArray(v) ? v : [String(v)]);
+
 function loadSpec(file: string): unknown {
   const raw = readFileSync(file, "utf8");
-  const ext = extname(file).toLowerCase();
-  return ext === ".json" ? JSON.parse(raw) : parseYaml(raw);
+  return extname(file).toLowerCase() === ".json" ? JSON.parse(raw) : parseYaml(raw);
 }
 
 function fail(msg: string): never {
@@ -47,14 +50,19 @@ function fail(msg: string): never {
 const HELP = `pdf — declarative spec → PDF (Typst)
 
 Usage:
-  pdf build <file> [--theme <name>] [--out <dir>] [--png] [--png-ppi <n>] [--strict]
+  pdf build <file> [--theme <name>] [--themes-dir <dir>] [--font-path <dir>]
+                   [--out <dir>] [--png] [--png-ppi <n>] [--strict]
   pdf new [--template <name>] [--out <file>]
   pdf themes
   pdf templates
+  pdf fonts [--font-path <dir>]        list font families Typst can see
+  pdf theme init <name> [--out <file>] scaffold a brand theme file
+  pdf schema [--out <file>]            emit the spec's JSON Schema
 
 Examples:
   pdf build invoice.yaml --theme default --png
-  pdf new --template invoice --out invoice.yaml
+  pdf build report.yaml --theme ./themes/acme.yaml --font-path ./brand-fonts
+  pdf theme init acme --out themes/acme.yaml
 `;
 
 function cmdBuild(flags: Flags) {
@@ -70,11 +78,13 @@ function cmdBuild(flags: Flags) {
 
   try {
     const result = build(spec, {
-      theme: typeof flags.theme === "string" ? flags.theme : undefined,
-      out: typeof flags.out === "string" ? flags.out : undefined,
-      basename: basename(file, extname(file)),
+      theme: str(flags.theme),
+      themesDir: multi(flags["themes-dir"]),
+      fontPaths: multi(flags["font-path"]),
+      out: str(flags.out),
+      basename: str(flags.basename) ?? basename(file, extname(file)),
       png: Boolean(flags.png),
-      pngPpi: typeof flags["png-ppi"] === "string" ? Number(flags["png-ppi"]) : undefined,
+      pngPpi: str(flags["png-ppi"]) ? Number(str(flags["png-ppi"])) : undefined,
       strict: Boolean(flags.strict),
     });
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
@@ -120,15 +130,68 @@ const STARTERS: Record<string, unknown> = {
 };
 
 function cmdNew(flags: Flags) {
-  const name = typeof flags.template === "string" ? flags.template : "freeform";
+  const name = str(flags.template) ?? "freeform";
   const starter = STARTERS[name];
   if (!starter) fail(`new: no starter for "${name}". Try: ${Object.keys(STARTERS).join(", ")}`);
-  const yamlOut = JSON.stringify(starter, null, 2);
-  if (typeof flags.out === "string") {
-    writeFileSync(flags.out, yamlOut + "\n", "utf8");
-    process.stdout.write(`Wrote ${flags.out}\n`);
+  const out = JSON.stringify(starter, null, 2);
+  const dest = str(flags.out);
+  if (dest) {
+    writeFileSync(dest, out + "\n", "utf8");
+    process.stdout.write(`Wrote ${dest}\n`);
   } else {
-    process.stdout.write(yamlOut + "\n");
+    process.stdout.write(out + "\n");
+  }
+}
+
+const THEME_STARTER = (name: string) => `# Theme: ${name}
+# Inherit a built-in (default | study) and override only what you need.
+# Run:  pdf build doc.yaml --theme ${name}   (searched in ./themes by default)
+extends: default
+description: "${name} brand theme"
+
+# logo: assets/${name}-logo.svg     # path is relative to THIS file; shows in the header
+
+fonts:
+  heading: "Space Grotesk"          # any family on your --font-path (see: pdf fonts)
+  body: "Inter"
+
+color:
+  primary: "#2563eb"                # accents, chart fill, callout borders
+  text: "#111111"
+  # callout: { definition: { bg: "#eef2ff", border: "#6366f1" } }
+
+# page: { paper: "us-letter", margin: "2cm" }
+`;
+
+function cmdThemeInit(flags: Flags) {
+  const name = (flags._ as string[])[2];
+  if (!name) fail("theme init: missing <name>.  e.g. pdf theme init acme --out themes/acme.yaml");
+  const content = THEME_STARTER(name);
+  const dest = str(flags.out);
+  if (dest) {
+    writeFileSync(dest, content, "utf8");
+    process.stdout.write(`Wrote ${dest}\n`);
+  } else {
+    process.stdout.write(content);
+  }
+}
+
+function cmdFonts(flags: Flags) {
+  const typst = resolveTypst();
+  if (!typst) fail(new TypstMissingError().message);
+  const fams = listFontFamilies(typst.bin, [join(import.meta.dirname, "..", "fonts"), ...multi(flags["font-path"])]);
+  if (!fams.length) fail("No fonts found.");
+  for (const f of fams) process.stdout.write(f + "\n");
+}
+
+function cmdSchema(flags: Flags) {
+  const json = JSON.stringify(specJsonSchema(), null, 2);
+  const dest = str(flags.out);
+  if (dest) {
+    writeFileSync(dest, json + "\n", "utf8");
+    process.stdout.write(`Wrote ${dest}\n`);
+  } else {
+    process.stdout.write(json + "\n");
   }
 }
 
@@ -142,7 +205,8 @@ function cmdTemplates() {
 
 function main() {
   const flags = parseArgs(process.argv.slice(2));
-  const cmd = (flags._ as string[])[0];
+  const argv = flags._ as string[];
+  const cmd = argv[0];
   switch (cmd) {
     case "build":
       return cmdBuild(flags);
@@ -152,6 +216,13 @@ function main() {
       return cmdThemes();
     case "templates":
       return cmdTemplates();
+    case "fonts":
+      return cmdFonts(flags);
+    case "theme":
+      if (argv[1] === "init") return cmdThemeInit(flags);
+      return fail(`Unknown 'theme' subcommand "${argv[1] ?? ""}". Try: pdf theme init <name>`);
+    case "schema":
+      return cmdSchema(flags);
     case undefined:
     case "help":
     case "--help":
