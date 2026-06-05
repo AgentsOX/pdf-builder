@@ -1,6 +1,6 @@
 {
   "name": "@agentsox/pdf-builder",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Agent-first CLI that turns a declarative document spec into a correct, branded PDF (Typst engine).",
   "license": "MIT",
   "repository": {
