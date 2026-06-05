@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { dirname, resolve, isAbsolute, join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { formatZodError, SpecError } from "../spec/validate.js";
+import { InputError } from "../diagnostics.js";
 import { deepMerge } from "../util/merge.js";
 import type { ThemeTokens } from "./types.js";
 import { defaultTheme } from "./default.js";
@@ -100,7 +101,7 @@ export function loadTheme(name: string, opts: ThemeLoadOptions = {}, seen: strin
   const dirs = opts.themesDir ?? [resolve("themes")];
   const file = findThemeFile(name, dirs);
   if (!file) {
-    throw new Error(
+    throw new InputError(
       `Unknown theme "${name}". Built-ins: ${Object.keys(BUILTIN_THEMES).join(", ")}. ` +
         `Or provide a theme file (searched: ${dirs.join(", ")}).`,
     );

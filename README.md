@@ -185,6 +185,8 @@ data:
 
 `error.kind` is one of `validation · typst_missing · typst_compile · io · unknown`, so failures are branchable without string-matching. Without `--json`, build prints a short human summary and lists warnings on stderr.
 
+**`--json` works on every command**, with the same envelope: `pdf profile list --json` → `{ ok, profiles, default }`, `pdf themes --json` → `{ ok, themes }`, `pdf fonts --json` → `{ ok, fonts }`, etc. Any failure is `{ ok: false, error: { kind, message } }` with a non-zero exit.
+
 ## Programmatic API
 
 ```ts

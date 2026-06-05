@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 
 import { join, dirname, resolve, isAbsolute, basename } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { formatZodError, SpecError } from "../spec/validate.js";
+import { InputError } from "../diagnostics.js";
 import { ProfileSchema, type Profile } from "./schema.js";
 import { globalConfigDir, localConfigDir, profileSearchDirs, configFiles } from "./paths.js";
 
@@ -42,7 +43,7 @@ export function loadProfile(name: string): LoadedProfile {
   const file = findProfileFile(name);
   if (!file) {
     const dirs = profileSearchDirs().join(", ");
-    throw new Error(`Unknown profile "${name}". Searched: ${dirs}. Create one with: pdf profile init ${name}`);
+    throw new InputError(`Unknown profile "${name}". Searched: ${dirs}. Create one with: pdf profile init ${name}`);
   }
   return { profile: readProfileFile(file), file, dir: dirname(file) };
 }

@@ -99,8 +99,9 @@ Inspect:
   pdf themes | templates | fonts | schema
 
 For agents: skip the interactive 'onboard' — use 'pdf profile init' (or write a
-profile YAML), and 'pdf build … --json' for machine-readable output. The spec
-contract is 'pdf schema'.
+profile YAML). Add --json to any command (build, profile, themes, templates,
+fonts, theme init) for one stable {ok,…} / {ok:false,error:{kind,…}} envelope.
+The spec contract is 'pdf schema'.
 
 Examples:
   pdf build invoice.yaml                      # uses your default profile
@@ -127,11 +128,31 @@ function buildOptions(flags: Flags, file: string): BuildOptions {
   };
 }
 
-// The `--json` envelope is a discriminated union on `ok`, stable for agents:
-//   success: { ok: true,  pdf_path, page_images, manifest, warnings }
+// Under `--json`, every command prints one envelope (discriminated on `ok`):
+//   success: { ok: true, ...command data }
 //   failure: { ok: false, error: { kind, message, issues?, stderr? } }
 // where kind ∈ validation | typst_missing | typst_compile | io | unknown.
 const printJson = (value: unknown) => process.stdout.write(JSON.stringify(value, null, 2) + "\n");
+const ok = (data: Record<string, unknown>) => printJson({ ok: true, ...data });
+
+function errorObject(e: unknown): Record<string, unknown> {
+  const o: Record<string, unknown> = { kind: classifyError(e), message: (e as Error).message };
+  if (e instanceof SpecError) o.issues = e.issues;
+  if (e instanceof TypstCompileError) o.stderr = e.stderr;
+  return o;
+}
+
+function printErrorHuman(e: unknown): never {
+  if (e instanceof SpecError) {
+    process.stderr.write("Invalid spec:\n");
+    for (const i of e.issues) {
+      process.stderr.write(`  - ${i.path}: expected ${i.expected}, got ${JSON.stringify(i.got)}\n    fix: ${i.fix}\n`);
+    }
+    process.exit(1);
+  }
+  if (e instanceof TypstCompileError) fail(`Typst compile failed:\n${e.stderr}`);
+  fail((e as Error).message);
+}
 
 function printHumanResult(result: ReturnType<typeof build>) {
   const m = result.manifest;
@@ -154,52 +175,27 @@ function printHumanResult(result: ReturnType<typeof build>) {
 function cmdBuild(flags: Flags) {
   const file = (flags._ as string[])[1];
   if (!file) fail("build: missing <file>.\n\n" + HELP);
-  const json = Boolean(flags.json);
+  const spec = loadSpec(file);
+  const opts = buildOptions(flags, file);
 
-  const emitError = (e: unknown): never => {
-    const kind = classifyError(e);
-    if (json) {
-      const error: Record<string, unknown> = { kind, message: (e as Error).message };
-      if (e instanceof SpecError) error.issues = e.issues;
-      if (e instanceof TypstCompileError) error.stderr = e.stderr;
-      printJson({ ok: false, error });
-      process.exit(1);
-    }
-    if (e instanceof SpecError) {
-      process.stderr.write("Invalid spec:\n");
-      for (const i of e.issues) {
-        process.stderr.write(`  - ${i.path}: expected ${i.expected}, got ${JSON.stringify(i.got)}\n    fix: ${i.fix}\n`);
-      }
-      process.exit(1);
-    }
-    if (e instanceof TypstCompileError) fail(`Typst compile failed:\n${e.stderr}`);
-    fail((e as Error).message);
-  };
-
-  try {
-    const spec = loadSpec(file);
-    const opts = buildOptions(flags, file);
-
-    // Debug front doors — no engine needed.
-    if (flags["emit-expanded-spec"]) {
-      const ex = expandSpec(spec, opts);
-      printJson({ schemaVersion: ex.validated.schemaVersion, theme: ex.themeName, template: ex.templateName, blocks: ex.blocks });
-      return;
-    }
-    if (flags["emit-typst"]) {
-      process.stdout.write(renderTypst(spec, opts).typst);
-      return;
-    }
-
-    const result = build(spec, opts);
-    if (json) {
-      printJson({ ok: true, pdf_path: result.pdf_path, page_images: result.page_images, manifest: result.manifest, warnings: result.warnings });
-    } else {
-      printHumanResult(result);
-    }
-  } catch (e) {
-    emitError(e);
+  // Debug front doors — no engine needed.
+  if (flags["emit-expanded-spec"]) {
+    const ex = expandSpec(spec, opts);
+    printJson({ schemaVersion: ex.validated.schemaVersion, theme: ex.themeName, template: ex.templateName, blocks: ex.blocks });
+    return;
   }
+  if (flags["emit-typst"]) {
+    process.stdout.write(renderTypst(spec, opts).typst);
+    return;
+  }
+
+  const result = build(spec, opts);
+  if (flags.json) {
+    ok({ pdf_path: result.pdf_path, page_images: result.page_images, manifest: result.manifest, warnings: result.warnings });
+  } else {
+    printHumanResult(result);
+  }
+  // Errors propagate to main(), which renders them as JSON or prose per --json.
 }
 
 const STARTERS: Record<string, unknown> = {
@@ -266,16 +262,19 @@ function cmdThemeInit(flags: Flags) {
   const dest = str(flags.out);
   if (dest) {
     writeFileSync(dest, content, "utf8");
-    process.stdout.write(`Wrote ${dest}\n`);
+    if (flags.json) ok({ path: dest });
+    else process.stdout.write(`Wrote ${dest}\n`);
   } else {
-    process.stdout.write(content);
+    if (flags.json) ok({ content });
+    else process.stdout.write(content);
   }
 }
 
 function cmdFonts(flags: Flags) {
   const typst = resolveTypst();
-  if (!typst) fail(new TypstMissingError().message);
+  if (!typst) throw new TypstMissingError(); // main() renders it (json or prose)
   const fams = listFontFamilies(typst.bin, [bundledFontsDir, ...multi(flags["font-path"])]);
+  if (flags.json) return ok({ fonts: fams });
   if (!fams.length) fail("No fonts found.");
   for (const f of fams) process.stdout.write(f + "\n");
 }
@@ -294,26 +293,26 @@ function cmdSchema(flags: Flags) {
 function cmdProfile(flags: Flags) {
   const argv = flags._ as string[];
   const sub = argv[1];
+  const json = Boolean(flags.json);
   const global = !flags.local; // global by default; --local for project-local
   switch (sub) {
     case "init": {
       const name = argv[2];
       if (!name) fail("profile init: missing <name>.  e.g. pdf profile init business");
       const file = writeProfile(name, profileInitTemplate(name), { global });
+      if (json) return ok({ path: file });
       process.stdout.write(`Wrote ${file}\nEdit it, then: pdf build <file> --profile ${name}\n`);
       return;
     }
     case "list": {
       const def = getDefaultProfile();
-      const profiles = listProfiles();
+      const profiles = listProfiles().map((p) => ({ ...p, default: p.name === def }));
+      if (json) return ok({ profiles, default: def });
       if (!profiles.length) {
         process.stdout.write("No profiles yet. Create one: pdf onboard  (or: pdf profile init <name>)\n");
         return;
       }
-      for (const p of profiles) {
-        const mark = p.name === def ? "★" : " ";
-        process.stdout.write(`${mark} ${p.name.padEnd(16)} ${p.scope}\n`);
-      }
+      for (const p of profiles) process.stdout.write(`${p.default ? "★" : " "} ${p.name.padEnd(16)} ${p.scope}\n`);
       return;
     }
     case "use": {
@@ -321,6 +320,7 @@ function cmdProfile(flags: Flags) {
       if (!name) fail("profile use: missing <name>.");
       loadProfile(name); // validate it exists/parses before setting
       const file = setDefaultProfile(name, { global });
+      if (json) return ok({ default: name, file });
       process.stdout.write(`Default profile set to "${name}" (${file})\n`);
       return;
     }
@@ -328,6 +328,7 @@ function cmdProfile(flags: Flags) {
       const name = argv[2];
       if (!name) fail("profile show: missing <name>.");
       const { profile, file } = loadProfile(name);
+      if (json) return ok({ profile, file });
       process.stdout.write(`# ${file}\n${JSON.stringify(profile, null, 2)}\n`);
       return;
     }
@@ -353,16 +354,19 @@ function cmdInit() {
   process.stdout.write(`Scaffolded a project:\n  ${file}\n  ${sample}\n\nRender it: pdf build ${sample} --png\n`);
 }
 
-function cmdThemes() {
-  for (const t of listThemes()) process.stdout.write(`${t.name.padEnd(12)} ${t.description}\n`);
+function cmdThemes(flags: Flags) {
+  const themes = listThemes();
+  if (flags.json) return ok({ themes });
+  for (const t of themes) process.stdout.write(`${t.name.padEnd(12)} ${t.description}\n`);
 }
 
-function cmdTemplates() {
-  for (const t of listTemplates()) process.stdout.write(`${t.name.padEnd(12)} ${t.description}\n`);
+function cmdTemplates(flags: Flags) {
+  const templates = listTemplates();
+  if (flags.json) return ok({ templates });
+  for (const t of templates) process.stdout.write(`${t.name.padEnd(12)} ${t.description}\n`);
 }
 
-async function main() {
-  const flags = parseArgs(process.argv.slice(2));
+async function dispatch(flags: Flags) {
   const argv = flags._ as string[];
   const cmd = argv[0];
   switch (cmd) {
@@ -377,9 +381,9 @@ async function main() {
     case "profile":
       return cmdProfile(flags);
     case "themes":
-      return cmdThemes();
+      return cmdThemes(flags);
     case "templates":
-      return cmdTemplates();
+      return cmdTemplates(flags);
     case "fonts":
       return cmdFonts(flags);
     case "theme":
@@ -397,7 +401,18 @@ async function main() {
   }
 }
 
-main().catch((e) => {
-  process.stderr.write(`${(e as Error).message}\n`);
-  process.exit(1);
-});
+async function main() {
+  const flags = parseArgs(process.argv.slice(2));
+  try {
+    await dispatch(flags);
+  } catch (e) {
+    // One error path for every command: JSON envelope under --json, else prose.
+    if (flags.json) {
+      printJson({ ok: false, error: errorObject(e) });
+      process.exit(1);
+    }
+    printErrorHuman(e);
+  }
+}
+
+main();
