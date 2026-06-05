@@ -53,24 +53,24 @@ describe.skipIf(!hasTypst())("production renders (showcase)", () => {
 
   it("renders the RTL Hebrew invoice with correct totals and no spurious warnings", () => {
     const r = render("hebrew-invoice");
-    expect(existsSync(r.pdf_path)).toBe(true);
+    expect(existsSync(r.pdfPath)).toBe(true);
     expect(r.manifest.pages).toBeGreaterThanOrEqual(1);
     expect(r.warnings).toHaveLength(0);
   });
 
   it("renders the LaTeX physics sheet with no deprecation noise leaking through", () => {
     const r = render("physics-cheatsheet");
-    expect(existsSync(r.pdf_path)).toBe(true);
+    expect(existsSync(r.pdfPath)).toBe(true);
     expect(r.warnings).toHaveLength(0);
   });
 
   it("renders the bilingual (mixed bidi) doc", () => {
-    expect(existsSync(render("bilingual").pdf_path)).toBe(true);
+    expect(existsSync(render("bilingual").pdfPath)).toBe(true);
   });
 
   it("renders the report with a real chart and no spurious warnings", () => {
     const r = render("report");
-    expect(existsSync(r.pdf_path)).toBe(true);
+    expect(existsSync(r.pdfPath)).toBe(true);
     expect(r.warnings).toHaveLength(0);
   });
 
@@ -86,7 +86,7 @@ describe.skipIf(!hasTypst())("production renders (showcase)", () => {
   it("enforces PDF/A conformance when requested", () => {
     const r = build(loadExample("invoice"), { out: OUT, basename: "pdfa", pdfStandard: "a-2b" });
     expect(r.manifest.pdfStandard).toBe("a-2b");
-    const bytes = readFileSync(r.pdf_path, "latin1");
+    const bytes = readFileSync(r.pdfPath, "latin1");
     expect(bytes).toContain("pdfaid"); // PDF/A identification metadata
   });
 });

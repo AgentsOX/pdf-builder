@@ -175,7 +175,7 @@ Every command accepts `--json` and prints one envelope, a discriminated union on
 
 ```jsonc
 // success
-{ "ok": true, "pdf_path": "…", "page_images": ["…"], "manifest": { }, "warnings": [ { "path", "expected", "got", "fix" } ] }
+{ "ok": true, "pdfPath": "…", "pageImages": ["…"], "manifest": { }, "warnings": [ { "path", "expected", "got", "fix" } ] }
 
 // failure
 { "ok": false, "error": { "kind": "validation", "message": "…", "issues": [ { "path", "expected", "got", "fix" } ] } }
@@ -189,7 +189,7 @@ Every command accepts `--json` and prints one envelope, a discriminated union on
 import { build } from "@agentsox/pdf-builder";
 
 const result = await build(spec, { theme: "default", png: true });
-// → { pdf_path, page_images, manifest, warnings }
+// → { pdfPath, pageImages, manifest, warnings }
 ```
 
 ## License

@@ -62,8 +62,8 @@ export interface Manifest {
 }
 
 export interface BuildResult {
-  pdf_path: string;
-  page_images: string[];
+  pdfPath: string;
+  pageImages: string[];
   manifest: Manifest;
   warnings: Issue[];
 }
@@ -299,5 +299,5 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
     throw new Error(`Strict mode: ${warnings.length} warning(s):\n${detail}`);
   }
 
-  return { pdf_path: pdfPath, page_images: pageImages, manifest, warnings };
+  return { pdfPath, pageImages, manifest, warnings };
 }

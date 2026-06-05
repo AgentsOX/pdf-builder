@@ -42,17 +42,41 @@ function levenshtein(a: string, b: string): number {
   return d[a.length][b.length];
 }
 
-function closestKey(key: string): string | null {
+/** Closest candidate within edit distance 2, or null. Used for both keys and values. */
+function closestAmong(word: string, candidates: readonly string[]): string | null {
   let best: string | null = null;
-  let bestD = 3; // only suggest within edit distance 2
-  for (const k of KNOWN_KEYS) {
-    const dist = levenshtein(key.toLowerCase(), k.toLowerCase());
+  let bestD = 3;
+  for (const c of candidates) {
+    const dist = levenshtein(word.toLowerCase(), c.toLowerCase());
     if (dist < bestD) {
       bestD = dist;
-      best = k;
+      best = c;
     }
   }
   return best;
+}
+
+const closestKey = (key: string) => closestAmong(key, KNOWN_KEYS);
+
+/** Keep `got` small in the JSON envelope: summarize objects/arrays that serialize large. */
+function clip(value: unknown): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if (JSON.stringify(value).length <= 200) return value;
+  if (Array.isArray(value)) return `[${value.length} items]`;
+  const keys = Object.keys(value);
+  return `{ ${keys.slice(0, 6).join(", ")}${keys.length > 6 ? ", …" : ""} }`;
+}
+
+/** A field that must be one of a fixed set — adds allowed values + a did-you-mean. */
+function enumIssue(path: string, got: unknown, allowed: readonly string[]): Issue {
+  const sugg = typeof got === "string" ? closestAmong(got, allowed) : null;
+  const list = allowed.join(", ");
+  return {
+    path,
+    expected: `one of: ${allowed.join(" | ")}`,
+    got,
+    fix: sugg ? `Set "${path}" to "${sugg}"? Allowed: ${list}.` : `Set "${path}" to one of: ${list}.`,
+  };
 }
 
 function getAtPath(root: unknown, path: PropertyKey[]): unknown {
@@ -68,41 +92,44 @@ function issueFromZod(issue: z.core.$ZodIssue, input: unknown): Issue {
   const path = issue.path.length ? issue.path.join(".") : "(root)";
   const got = issue.path.length ? getAtPath(input, issue.path) : undefined;
 
-  let expected = issue.message;
-  let fix = issue.message;
-
   switch (issue.code) {
     case "unrecognized_keys": {
       const keys = (issue as z.core.$ZodIssueUnrecognizedKeys).keys ?? [];
-      expected = "no unknown keys";
       const hints = keys
         .map((k) => {
           const sugg = closestKey(k);
           return sugg ? `"${k}" (did you mean "${sugg}"?)` : `"${k}"`;
         })
         .join(", ");
-      fix = `Remove unknown key(s) at "${path}": ${hints}.`;
-      return { path: path === "(root)" ? keys.join(", ") : `${path}.${keys.join(",")}`, expected, got: keys, fix };
+      return {
+        path: path === "(root)" ? keys.join(", ") : `${path}.${keys.join(",")}`,
+        expected: "no unknown keys",
+        got: keys,
+        fix: `Remove unknown key(s) at "${path}": ${hints}.`,
+      };
     }
-    case "invalid_type":
-      expected = String((issue as z.core.$ZodIssueInvalidType).expected);
-      fix = `Set "${path}" to a ${expected}.`;
-      break;
-    case "invalid_value":
-    case "invalid_union":
-      expected = issue.message;
-      fix = `Check "${path}" — ${issue.message}.`;
-      break;
+    case "invalid_value": {
+      // Enum mismatch: zod carries the allowed `values`.
+      const values = (issue as { values?: unknown[] }).values;
+      if (Array.isArray(values)) return enumIssue(path, got, values.map(String));
+      return { path, expected: issue.message, got: clip(got), fix: `Check "${path}" — ${issue.message}.` };
+    }
+    case "invalid_union": {
+      // Discriminated-union miss (e.g. bad block `type`): zod carries the allowed `options`.
+      const options = (issue as { options?: unknown[] }).options;
+      if (Array.isArray(options)) return enumIssue(path, got, options.map(String));
+      return { path, expected: issue.message, got: clip(got), fix: `Check "${path}" — ${issue.message}.` };
+    }
+    case "invalid_type": {
+      const expected = String((issue as z.core.$ZodIssueInvalidType).expected);
+      return { path, expected, got: clip(got), fix: `Set "${path}" to a ${expected}.` };
+    }
     case "too_small":
     case "too_big":
-      expected = issue.message;
-      fix = `Adjust "${path}" — ${issue.message}.`;
-      break;
+      return { path, expected: issue.message, got: clip(got), fix: `Adjust "${path}" — ${issue.message}.` };
     default:
-      fix = `Fix "${path}": ${issue.message}.`;
+      return { path, expected: issue.message, got: clip(got), fix: `Fix "${path}": ${issue.message}.` };
   }
-
-  return { path, expected, got, fix };
 }
 
 /** Map a ZodError into agent-fixable issues. */

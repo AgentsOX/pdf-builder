@@ -12,15 +12,15 @@ const loadExample = (name: string) => parseYaml(readFileSync(join("examples", na
 describe.skipIf(!hasTypst())("end-to-end render", () => {
   it("renders the invoice example to a real PDF + PNG with a correct manifest", () => {
     const r = build(loadExample("invoice.yaml"), { out: OUT, basename: "invoice", png: true });
-    expect(existsSync(r.pdf_path)).toBe(true);
-    expect(r.page_images.length).toBeGreaterThan(0);
+    expect(existsSync(r.pdfPath)).toBe(true);
+    expect(r.pageImages.length).toBeGreaterThan(0);
     expect(r.manifest.template).toBe("invoice");
     expect(r.manifest.pages).toBeGreaterThanOrEqual(1);
   });
 
   it("renders the study-summary (math + callouts) freeform example", () => {
     const r = build(loadExample("study-summary.yaml"), { out: OUT, basename: "study", png: true });
-    expect(existsSync(r.pdf_path)).toBe(true);
+    expect(existsSync(r.pdfPath)).toBe(true);
     expect(r.manifest.theme).toBe("study");
   });
 
@@ -28,6 +28,6 @@ describe.skipIf(!hasTypst())("end-to-end render", () => {
     const spec = loadExample("invoice.yaml");
     const a = build(spec, { out: OUT, basename: "det-a" });
     const b = build(spec, { out: OUT, basename: "det-b" });
-    expect(readFileSync(a.pdf_path)).toEqual(readFileSync(b.pdf_path));
+    expect(readFileSync(a.pdfPath)).toEqual(readFileSync(b.pdfPath));
   });
 });

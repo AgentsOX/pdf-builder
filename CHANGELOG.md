@@ -6,6 +6,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING:** `--json` build result keys are now camelCase, matching the manifest:
+  `pdf_path` → `pdfPath`, `page_images` → `pageImages`. (Bumps the next release to 0.2.0.)
+- `pdf schema` now carries a `description` on every spec field, so agents and editors
+  get the meaning of each field, not just its type.
+- Validation suggests the closest valid value on enum/`type` typos
+  (e.g. `kind: "barr"` → `"bar"`, `type: "tabel"` → `"table"`) and lists the allowed
+  values in `expected` — not only key typos as before.
+- Oversized `got` values in error issues are clamped to a compact preview, keeping the
+  `--json` failure envelope small in an agent's context.
+
+### Docs
+- README rewritten in a plainer, less marketing-flavored voice.
+
 ## [0.1.0] — 2026-06-05
 
 ### Added

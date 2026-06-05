@@ -73,7 +73,7 @@ describe.skipIf(!haveCli || !hasTypst())("cli build success contract", () => {
     const r = run(["build", "examples/invoice.yaml", "--no-profile", "--out", join("out", "cli"), "--basename", "ci", "--json"]);
     const j = JSON.parse(r.stdout);
     expect(j.ok).toBe(true);
-    expect(j.pdf_path).toMatch(/\.pdf$/);
+    expect(j.pdfPath).toMatch(/\.pdf$/);
     expect(j.manifest.hashes.output).toMatch(/^[0-9a-f]{64}$/);
     expect(r.code).toBe(0);
   });

@@ -152,8 +152,8 @@ function printHumanResult(result: ReturnType<typeof build>) {
   ]
     .filter(Boolean)
     .join(", ");
-  process.stdout.write(`✓ ${result.pdf_path}  (${meta})\n`);
-  for (const p of result.page_images) process.stdout.write(`  + ${p}\n`);
+  process.stdout.write(`✓ ${result.pdfPath}  (${meta})\n`);
+  for (const p of result.pageImages) process.stdout.write(`  + ${p}\n`);
   if (result.warnings.length) {
     process.stderr.write(`\n${result.warnings.length} warning(s):\n`);
     for (const w of result.warnings) process.stderr.write(`  - [${w.path}] ${w.fix}\n`);
@@ -179,7 +179,7 @@ function cmdBuild(flags: Flags) {
 
   const result = build(spec, opts);
   if (flags.json) {
-    printSuccess({ pdf_path: result.pdf_path, page_images: result.page_images, manifest: result.manifest, warnings: result.warnings });
+    printSuccess({ pdfPath: result.pdfPath, pageImages: result.pageImages, manifest: result.manifest, warnings: result.warnings });
   } else {
     printHumanResult(result);
   }
@@ -272,7 +272,7 @@ const GUIDE_WORKFLOW = [
   "Write a spec (YAML or JSON). Template path: emit `template:` + `data:` for a known type (see TEMPLATES). Freeform path: emit `blocks: [...]` for anything else.",
   "Render: `pdf build <file> --png --json`.",
   "On `{ok:false}`: fix using `error.kind` and each `issues[].fix`, then rebuild.",
-  "On `{ok:true}`: OPEN the `page_images` and look at them; fix the spec and rebuild until it's correct.",
+  "On `{ok:true}`: OPEN the `pageImages` and look at them; fix the spec and rebuild until it's correct.",
   "You never set colors/fonts (themes do) or compute totals (templates do). Pass `--profile <name>` to apply the user's brand/identity.",
 ];
 
