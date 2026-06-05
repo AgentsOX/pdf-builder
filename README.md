@@ -171,6 +171,20 @@ data:
     - { description: "FAQ bot setup", qty: 1, unitPrice: 1200 }
 ```
 
+## For agents: the `--json` contract
+
+`pdf build … --json` prints one stable envelope to stdout (a discriminated union on `ok`) and exits non-zero on failure — no prose to parse:
+
+```jsonc
+// success
+{ "ok": true, "pdf_path": "...", "page_images": ["..."], "manifest": { ... }, "warnings": [ { "path","expected","got","fix" } ] }
+
+// failure
+{ "ok": false, "error": { "kind": "validation", "message": "...", "issues": [ { "path","expected","got","fix" } ] } }
+```
+
+`error.kind` is one of `validation · typst_missing · typst_compile · io · unknown`, so failures are branchable without string-matching. Without `--json`, build prints a short human summary and lists warnings on stderr.
+
 ## Programmatic API
 
 ```ts

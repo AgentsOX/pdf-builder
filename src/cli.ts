@@ -19,6 +19,7 @@ import {
 } from "./profile/load.js";
 import { profileInitTemplate } from "./profile/scaffold.js";
 import { runOnboard } from "./profile/onboard.js";
+import { InputError, classifyError } from "./diagnostics.js";
 
 interface Flags {
   _: string[];
@@ -56,8 +57,17 @@ const str = (v: Flags[string]): string | undefined => (typeof v === "string" ? v
 const multi = (v: Flags[string]): string[] => (v === undefined ? [] : Array.isArray(v) ? v : [String(v)]);
 
 function loadSpec(file: string): unknown {
-  const raw = readFileSync(file, "utf8");
-  return extname(file).toLowerCase() === ".json" ? JSON.parse(raw) : parseYaml(raw);
+  let raw: string;
+  try {
+    raw = readFileSync(file, "utf8");
+  } catch {
+    throw new InputError(`Cannot read file: ${file}`);
+  }
+  try {
+    return extname(file).toLowerCase() === ".json" ? JSON.parse(raw) : parseYaml(raw);
+  } catch (e) {
+    throw new InputError(`Cannot parse ${file}: ${(e as Error).message}`);
+  }
 }
 
 function fail(msg: string): never {
@@ -117,16 +127,42 @@ function buildOptions(flags: Flags, file: string): BuildOptions {
   };
 }
 
+// The `--json` envelope is a discriminated union on `ok`, stable for agents:
+//   success: { ok: true,  pdf_path, page_images, manifest, warnings }
+//   failure: { ok: false, error: { kind, message, issues?, stderr? } }
+// where kind ∈ validation | typst_missing | typst_compile | io | unknown.
+const printJson = (value: unknown) => process.stdout.write(JSON.stringify(value, null, 2) + "\n");
+
+function printHumanResult(result: ReturnType<typeof build>) {
+  const m = result.manifest;
+  const meta = [
+    `${m.pages} page${m.pages === 1 ? "" : "s"}`,
+    `theme=${m.theme}`,
+    m.profile ? `profile=${m.profile}` : null,
+    m.pdfStandard ? `pdf=${m.pdfStandard}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  process.stdout.write(`✓ ${result.pdf_path}  (${meta})\n`);
+  for (const p of result.page_images) process.stdout.write(`  + ${p}\n`);
+  if (result.warnings.length) {
+    process.stderr.write(`\n${result.warnings.length} warning(s):\n`);
+    for (const w of result.warnings) process.stderr.write(`  - [${w.path}] ${w.fix}\n`);
+  }
+}
+
 function cmdBuild(flags: Flags) {
   const file = (flags._ as string[])[1];
   if (!file) fail("build: missing <file>.\n\n" + HELP);
   const json = Boolean(flags.json);
 
-  const emitError = (e: unknown) => {
+  const emitError = (e: unknown): never => {
+    const kind = classifyError(e);
     if (json) {
-      const issues = e instanceof SpecError ? e.issues : undefined;
-      const stderr = e instanceof TypstCompileError ? e.stderr : undefined;
-      process.stdout.write(JSON.stringify({ ok: false, error: (e as Error).message, issues, stderr }, null, 2) + "\n");
+      const error: Record<string, unknown> = { kind, message: (e as Error).message };
+      if (e instanceof SpecError) error.issues = e.issues;
+      if (e instanceof TypstCompileError) error.stderr = e.stderr;
+      printJson({ ok: false, error });
       process.exit(1);
     }
     if (e instanceof SpecError) {
@@ -136,7 +172,6 @@ function cmdBuild(flags: Flags) {
       }
       process.exit(1);
     }
-    if (e instanceof TypstMissingError) fail(e.message);
     if (e instanceof TypstCompileError) fail(`Typst compile failed:\n${e.stderr}`);
     fail((e as Error).message);
   };
@@ -148,13 +183,7 @@ function cmdBuild(flags: Flags) {
     // Debug front doors — no engine needed.
     if (flags["emit-expanded-spec"]) {
       const ex = expandSpec(spec, opts);
-      process.stdout.write(
-        JSON.stringify(
-          { schemaVersion: ex.validated.schemaVersion, theme: ex.themeName, template: ex.templateName, blocks: ex.blocks },
-          null,
-          2,
-        ) + "\n",
-      );
+      printJson({ schemaVersion: ex.validated.schemaVersion, theme: ex.themeName, template: ex.templateName, blocks: ex.blocks });
       return;
     }
     if (flags["emit-typst"]) {
@@ -164,13 +193,9 @@ function cmdBuild(flags: Flags) {
 
     const result = build(spec, opts);
     if (json) {
-      process.stdout.write(JSON.stringify({ ok: true, ...result }, null, 2) + "\n");
+      printJson({ ok: true, pdf_path: result.pdf_path, page_images: result.page_images, manifest: result.manifest, warnings: result.warnings });
     } else {
-      process.stdout.write(JSON.stringify(result, null, 2) + "\n");
-      if (result.warnings.length) {
-        process.stderr.write(`\n${result.warnings.length} warning(s):\n`);
-        for (const w of result.warnings) process.stderr.write(`  - [${w.path}] ${w.fix}\n`);
-      }
+      printHumanResult(result);
     }
   } catch (e) {
     emitError(e);
