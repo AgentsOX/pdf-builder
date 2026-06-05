@@ -1,0 +1,121 @@
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import type { Issue } from "./spec/validate.js";
+
+/** Minimum Typst version we've validated against (determinism is version-sensitive). */
+export const MIN_TYPST = { major: 0, minor: 12 };
+
+export class TypstMissingError extends Error {
+  constructor() {
+    super(
+      [
+        "Typst is required but was not found.",
+        "Install it, then re-run:",
+        "  macOS:    brew install typst",
+        "  any/Rust: cargo install typst-cli",
+        "  Windows:  winget install Typst.Typst",
+        "Or set PDF_BUILDER_TYPST to the binary path.",
+      ].join("\n"),
+    );
+    this.name = "TypstMissingError";
+  }
+}
+
+export interface TypstInfo {
+  bin: string;
+  version: string;
+}
+
+function probe(bin: string): string | null {
+  try {
+    const r = spawnSync(bin, ["--version"], { encoding: "utf8" });
+    if (r.status === 0 && r.stdout) return r.stdout.trim();
+  } catch {
+    /* not runnable */
+  }
+  return null;
+}
+
+/** Resolve the Typst binary: env override first, then PATH. */
+export function resolveTypst(): TypstInfo | null {
+  const candidates = process.env.PDF_BUILDER_TYPST
+    ? [process.env.PDF_BUILDER_TYPST]
+    : ["typst"];
+  for (const bin of candidates) {
+    const out = probe(bin);
+    if (out) return { bin, version: out };
+  }
+  return null;
+}
+
+export function hasTypst(): boolean {
+  return resolveTypst() !== null;
+}
+
+/** Parse "typst 0.13.1 (hash)" → {major, minor}; null if unparseable. */
+export function parseVersion(s: string): { major: number; minor: number } | null {
+  const m = s.match(/(\d+)\.(\d+)\.\d+/);
+  return m ? { major: Number(m[1]), minor: Number(m[2]) } : null;
+}
+
+/** Warn (not fail) if the installed version is below the validated floor. */
+export function versionWarnings(info: TypstInfo): Issue[] {
+  const v = parseVersion(info.version);
+  if (!v) return [];
+  if (v.major < MIN_TYPST.major || (v.major === MIN_TYPST.major && v.minor < MIN_TYPST.minor)) {
+    return [
+      {
+        path: "(typst)",
+        expected: `>= ${MIN_TYPST.major}.${MIN_TYPST.minor}.x`,
+        got: info.version,
+        fix: `Upgrade Typst to >= ${MIN_TYPST.major}.${MIN_TYPST.minor} for stable output.`,
+      },
+    ];
+  }
+  return [];
+}
+
+interface RunOpts {
+  bin: string;
+  input: string; // absolute path to the .typ file
+  output: string; // absolute path (or {p}-pattern for png)
+  root: string; // sandbox root for image() includes
+  fontPath?: string;
+  ppi?: number; // png only
+}
+
+function run({ bin, input, output, root, fontPath, ppi }: RunOpts): { stderr: string } {
+  const args = [
+    "compile",
+    input,
+    output,
+    "--root",
+    root,
+    "--creation-timestamp",
+    "0", // pin the PDF date → deterministic output
+    "--ignore-system-fonts", // resolve fonts only from bundle/embedded → reproducible
+  ];
+  if (fontPath && existsSync(fontPath)) args.push("--font-path", fontPath);
+  if (ppi) args.push("--ppi", String(ppi));
+
+  const r = spawnSync(bin, args, { encoding: "utf8" });
+  if (r.status !== 0) {
+    throw new TypstCompileError(r.stderr || r.stdout || `typst exited with code ${r.status}`);
+  }
+  return { stderr: r.stderr ?? "" };
+}
+
+export class TypstCompileError extends Error {
+  constructor(public stderr: string) {
+    super("Typst failed to compile the document.");
+    this.name = "TypstCompileError";
+  }
+}
+
+export function compileToPdf(opts: Omit<RunOpts, "ppi">): { stderr: string } {
+  return run(opts);
+}
+
+export function compileToPng(opts: RunOpts): { stderr: string } {
+  return run({ ppi: 144, ...opts });
+}

@@ -1,0 +1,36 @@
+# Freeform path: raw blocks. Shows math, callouts, columns and a rules table.
+theme: study
+blocks:
+  - { type: header, text: "Calculus — Derivatives" }
+
+  - { type: heading, level: 1, text: "Derivatives — Study Summary" }
+
+  - type: callout
+    kind: definition
+    title: Derivative
+    body:
+      - type: text
+        text: "The instantaneous rate of change: $f'(x) = lim_(h -> 0) (f(x+h) - f(x)) / h$."
+
+  - { type: heading, level: 2, text: "Core rules" }
+  - type: table
+    header: ["Rule", "Formula"]
+    rows:
+      - ["Power", "$d/(d x) x^n = n x^(n-1)$"]
+      - ["Product", "$(f g)' = f' g + f g'$"]
+      - ["Chain", "$(d y)/(d x) = (d y)/(d u) (d u)/(d x)$"]
+
+  - type: callout
+    kind: theorem
+    title: Fundamental Theorem of Calculus
+    body:
+      - { type: math, tex: "integral_a^b f'(x) dif x = f(b) - f(a)" }
+
+  - { type: heading, level: 2, text: "Worked example" }
+  - type: columns
+    children:
+      - - { type: text, text: "Differentiate term by term:" }
+        - { type: math, tex: "d/(d x) (3 x^2 + 2 x) = 6 x + 2" }
+      - - { type: callout, kind: tip, body: [ { type: text, text: "Constants drop; powers step down by one." } ] }
+
+  - { type: footer, text: "Study notes", pageNumbers: true }

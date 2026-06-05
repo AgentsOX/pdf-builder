@@ -1,0 +1,21 @@
+# Template path: emit invoice DATA; the template computes totals and lays it out.
+template: invoice
+theme: default
+data:
+  seller:
+    name: AgentsOX
+    email: hello@agentsox.com
+    taxId: "123456789"
+  client:
+    name: Acme Co
+    email: ap@acme.co
+    address: 1 Market St, Springfield
+  number: INV-001
+  date: "2026-06-05"
+  currency: USD
+  vat:
+    mode: exempt
+  lineItems:
+    - { description: FAQ bot setup, qty: 1, unitPrice: 1200 }
+    - { description: Monthly retainer, qty: 3, unitPrice: 400 }
+  notes: Payment due within 30 days (Net 30).
