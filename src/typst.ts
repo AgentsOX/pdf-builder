@@ -150,13 +150,26 @@ export function compileToPng(opts: RunOpts): { stderr: string } {
   return run({ ...opts, ppi: opts.ppi ?? DEFAULT_PNG_PPI });
 }
 
-/** List font families Typst can see (bundled + given dirs). For `pdf fonts`. */
+const fontFamiliesCache = new Map<string, string[]>();
+
+/**
+ * List font families Typst can see (bundled + given dirs). For `pdf fonts` and
+ * the build-time availability check. Memoized per (bin, fontPaths) so an agent's
+ * build→fix→build loop doesn't respawn `typst fonts` every iteration.
+ */
 export function listFontFamilies(bin: string, fontPaths: string[]): string[] {
+  const key = [bin, ...fontPaths].join("\0");
+  const cached = fontFamiliesCache.get(key);
+  if (cached) return cached;
+
   const args = ["fonts", "--ignore-system-fonts"];
   for (const fp of fontPaths) if (existsSync(fp)) args.push("--font-path", fp);
   const r = spawnSync(bin, args, { encoding: "utf8" });
-  if (r.status !== 0) return [];
-  return Array.from(new Set((r.stdout ?? "").split("\n").map((s) => s.trim()).filter(Boolean))).sort();
+  const families = r.status !== 0
+    ? []
+    : Array.from(new Set((r.stdout ?? "").split("\n").map((s) => s.trim()).filter(Boolean))).sort();
+  fontFamiliesCache.set(key, families);
+  return families;
 }
 
 /**

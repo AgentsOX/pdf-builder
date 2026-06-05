@@ -182,18 +182,14 @@ function parseTypstStderr(stderr: string): Issue[] {
     .map((l) => ({ path: "(typst)", expected: "clean compile", got: l.trim(), fix: "Review the Typst warning above." }));
 }
 
-/** Best-effort page count from the PDF (authoritative count comes from PNGs). */
-function countPdfPages(pdfPath: string): number {
-  try {
-    const buf = readFileSync(pdfPath, "latin1");
-    const count =
-      buf.match(/\/Type\s*\/Pages\b[^>]*?\/Count\s+(\d+)/) ?? buf.match(/\/Count\s+(\d+)\b[^>]*?\/Type\s*\/Pages/);
-    if (count) return Number(count[1]);
-    const pages = buf.match(/\/Type\s*\/Page(?![s])/g);
-    return pages ? pages.length : 1;
-  } catch {
-    return 1;
-  }
+/** Best-effort page count from already-read PDF bytes (PNGs are authoritative). */
+function countPdfPages(pdf: Buffer): number {
+  const buf = pdf.toString("latin1");
+  const count =
+    buf.match(/\/Type\s*\/Pages\b[^>]*?\/Count\s+(\d+)/) ?? buf.match(/\/Count\s+(\d+)\b[^>]*?\/Type\s*\/Pages/);
+  if (count) return Number(count[1]);
+  const pages = buf.match(/\/Type\s*\/Page(?![s])/g);
+  return pages ? pages.length : 1;
 }
 
 function validatePdfStandard(std: string): void {
@@ -277,10 +273,13 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
       .map((f) => join(outDir, f));
   }
 
+  // Read the rendered PDF once; derive both page count and output hash from it.
+  const pdfBytes = readFileSync(pdfPath);
+
   const manifest: Manifest = {
     schemaVersion: rendered.validated.schemaVersion ?? SCHEMA_VERSION,
     profile: profileName,
-    pages: pageImages.length || countPdfPages(pdfPath),
+    pages: pageImages.length || countPdfPages(pdfBytes),
     blocks: rendered.blockCount,
     theme: rendered.themeName,
     template: rendered.templateName,
@@ -290,7 +289,7 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
     hashes: {
       spec: sha256(stableStringify(rendered.validated)),
       typst: sha256(rendered.typst),
-      output: sha256(readFileSync(pdfPath)),
+      output: sha256(pdfBytes),
     },
   };
 
