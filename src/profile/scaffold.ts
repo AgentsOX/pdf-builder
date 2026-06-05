@@ -38,10 +38,6 @@ export function profileObject(a: ProfileAnswers): Profile {
   return p;
 }
 
-export function profileYaml(a: ProfileAnswers): string {
-  return toYaml(profileObject(a));
-}
-
 export interface BrandAnswers {
   name: string;
   primary?: string;
@@ -64,6 +60,29 @@ export function brandThemeYaml(b: BrandAnswers): string {
   if (b.text) color.text = b.text;
   if (Object.keys(color).length) theme.color = color;
   return toYaml(theme);
+}
+
+/** Commented starter for `pdf theme init <name>` (a brand theme to hand-edit). */
+export function themeInitTemplate(name: string): string {
+  return `# Theme: ${name}
+# Inherit a built-in (default | study) and override only what you need.
+# Run:  pdf build doc.yaml --theme ${name}   (searched in ./themes by default)
+extends: default
+description: "${name} brand theme"
+
+# logo: assets/${name}-logo.svg     # path is relative to THIS file; shows in the header
+
+fonts:
+  heading: "Space Grotesk"          # any family on your --font-path (see: pdf fonts)
+  body: "Inter"
+
+color:
+  primary: "#2563eb"                # accents, chart fill, callout borders
+  text: "#111111"
+  # callout: { definition: { bg: "#eef2ff", border: "#6366f1" } }
+
+# page: { paper: "us-letter", margin: "2cm" }
+`;
 }
 
 /**

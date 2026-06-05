@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { basename, extname } from "node:path";
-import { parse as parseYaml, stringify as toYaml } from "yaml";
+import { stringify as toYaml } from "yaml";
 import { bundledFontsDir } from "./paths.js";
 import { build, renderTypst, expandSpec, type BuildOptions } from "./pipeline.js";
 import { listThemes } from "./theme/index.js";
@@ -9,21 +9,15 @@ import { listTemplates } from "./templates/index.js";
 import { SpecError } from "./spec/validate.js";
 import { specJsonSchema } from "./spec/jsonschema.js";
 import { resolveTypst, listFontFamilies, TypstMissingError, TypstCompileError } from "./typst.js";
-import {
-  loadProfile,
-  listProfiles,
-  getDefaultProfile,
-  setDefaultProfile,
-  writeProfile,
-  writeThemeFile,
-} from "./profile/load.js";
-import { profileInitTemplate } from "./profile/scaffold.js";
+import { loadProfile, listProfiles, getDefaultProfile, setDefaultProfile, writeProfile } from "./profile/load.js";
+import { profileInitTemplate, themeInitTemplate } from "./profile/scaffold.js";
 import { runOnboard } from "./profile/onboard.js";
 import { profileSearchDirs, themeSearchDirs } from "./profile/paths.js";
-import { InputError, classifyError } from "./diagnostics.js";
+import { classifyError } from "./diagnostics.js";
+import { readStructuredFile } from "./util/config-file.js";
 
 interface Flags {
-  _: string[];
+  positionals: string[];
   [k: string]: string | boolean | string[];
 }
 
@@ -33,9 +27,9 @@ const BOOLEAN_FLAGS = new Set([
   "png", "strict", "help", "json", "emit-typst", "emit-expanded-spec", "no-profile", "local", "global",
 ]);
 
-/** Repeated flags accumulate into arrays (e.g. multiple --font-path). */
+/** Parse argv into positionals + flags. Repeated flags accumulate into arrays. */
 function parseArgs(argv: string[]): Flags {
-  const flags: Flags = { _: [] };
+  const flags: Flags = { positionals: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a.startsWith("--")) {
@@ -48,28 +42,16 @@ function parseArgs(argv: string[]): Flags {
       else if (Array.isArray(prev)) prev.push(String(val));
       else flags[key] = [String(prev), String(val)];
     } else {
-      (flags._ as string[]).push(a);
+      flags.positionals.push(a);
     }
   }
   return flags;
 }
 
-const str = (v: Flags[string]): string | undefined => (typeof v === "string" ? v : undefined);
-const multi = (v: Flags[string]): string[] => (v === undefined ? [] : Array.isArray(v) ? v : [String(v)]);
-
-function loadSpec(file: string): unknown {
-  let raw: string;
-  try {
-    raw = readFileSync(file, "utf8");
-  } catch {
-    throw new InputError(`Cannot read file: ${file}`);
-  }
-  try {
-    return extname(file).toLowerCase() === ".json" ? JSON.parse(raw) : parseYaml(raw);
-  } catch (e) {
-    throw new InputError(`Cannot parse ${file}: ${(e as Error).message}`);
-  }
-}
+/** A flag's value as a single string (or undefined). */
+const asString = (v: Flags[string]): string | undefined => (typeof v === "string" ? v : undefined);
+/** A flag's value(s) as a string array (empty if unset). */
+const asList = (v: Flags[string]): string[] => (v === undefined ? [] : Array.isArray(v) ? v : [String(v)]);
 
 function fail(msg: string): never {
   process.stderr.write(msg + "\n");
@@ -84,7 +66,7 @@ blocks, themes/templates/profiles, recipes, example, JSON Schema). Then build.
 Build:
   pdf build <file> [--profile <name> | --no-profile] [--theme <name>] [--out <dir>]
       [--png] [--pdf-standard <a-2b|ua-1|…>] [--strict] [--json]
-      [--emit-typst | --emit-expanded-spec] [--font-path <dir>]…
+      [--emit-typst | --emit-expanded-spec] [--font-path <dir>]… [--themes-dir <dir>]…
                                        render a spec; uses your default profile
 
 Profiles (a context = theme + defaults + identity):
@@ -117,17 +99,17 @@ Examples:
 
 function buildOptions(flags: Flags, file: string): BuildOptions {
   // Profile: explicit --profile, else the configured default, unless --no-profile.
-  const profile = flags["no-profile"] ? undefined : (str(flags.profile) ?? getDefaultProfile() ?? undefined);
+  const profile = flags["no-profile"] ? undefined : (asString(flags.profile) ?? getDefaultProfile() ?? undefined);
   return {
-    theme: str(flags.theme),
-    themesDir: multi(flags["themes-dir"]),
-    fontPaths: multi(flags["font-path"]),
-    out: str(flags.out),
-    basename: str(flags.basename) ?? basename(file, extname(file)),
+    theme: asString(flags.theme),
+    themesDir: asList(flags["themes-dir"]),
+    fontPaths: asList(flags["font-path"]),
+    out: asString(flags.out),
+    basename: asString(flags.basename) ?? basename(file, extname(file)),
     png: Boolean(flags.png),
-    pngPpi: str(flags["png-ppi"]) ? Number(str(flags["png-ppi"])) : undefined,
+    pngPpi: asString(flags["png-ppi"]) ? Number(asString(flags["png-ppi"])) : undefined,
     strict: Boolean(flags.strict),
-    pdfStandard: str(flags["pdf-standard"]),
+    pdfStandard: asString(flags["pdf-standard"]),
     profile,
   };
 }
@@ -137,7 +119,7 @@ function buildOptions(flags: Flags, file: string): BuildOptions {
 //   failure: { ok: false, error: { kind, message, issues?, stderr? } }
 // where kind ∈ validation | typst_missing | typst_compile | io | unknown.
 const printJson = (value: unknown) => process.stdout.write(JSON.stringify(value, null, 2) + "\n");
-const ok = (data: Record<string, unknown>) => printJson({ ok: true, ...data });
+const printSuccess = (data: Record<string, unknown>) => printJson({ ok: true, ...data });
 
 function errorObject(e: unknown): Record<string, unknown> {
   const o: Record<string, unknown> = { kind: classifyError(e), message: (e as Error).message };
@@ -177,9 +159,9 @@ function printHumanResult(result: ReturnType<typeof build>) {
 }
 
 function cmdBuild(flags: Flags) {
-  const file = (flags._ as string[])[1];
+  const file = flags.positionals[1];
   if (!file) fail("build: missing <file>.\n\n" + HELP);
-  const spec = loadSpec(file);
+  const spec = readStructuredFile(file);
   const opts = buildOptions(flags, file);
 
   // Debug front doors — no engine needed.
@@ -195,7 +177,7 @@ function cmdBuild(flags: Flags) {
 
   const result = build(spec, opts);
   if (flags.json) {
-    ok({ pdf_path: result.pdf_path, page_images: result.page_images, manifest: result.manifest, warnings: result.warnings });
+    printSuccess({ pdf_path: result.pdf_path, page_images: result.page_images, manifest: result.manifest, warnings: result.warnings });
   } else {
     printHumanResult(result);
   }
@@ -225,67 +207,45 @@ const STARTERS: Record<string, unknown> = {
   },
 };
 
-function cmdNew(flags: Flags) {
-  const name = str(flags.template) ?? "freeform";
-  const starter = STARTERS[name];
-  if (!starter) fail(`new: no starter for "${name}". Try: ${Object.keys(STARTERS).join(", ")}`);
-  const out = toYaml(starter);
-  const dest = str(flags.out);
+/** Write generated content to a file (--out) or stdout, honoring --json. */
+function emitContent(content: string, flags: Flags) {
+  const dest = asString(flags.out);
   if (dest) {
-    writeFileSync(dest, out, "utf8");
-    process.stdout.write(`Wrote ${dest}\n`);
+    writeFileSync(dest, content, "utf8");
+    if (flags.json) printSuccess({ path: dest });
+    else process.stdout.write(`Wrote ${dest}\n`);
+  } else if (flags.json) {
+    printSuccess({ content });
   } else {
-    process.stdout.write(out);
+    process.stdout.write(content);
   }
 }
 
-const THEME_STARTER = (name: string) => `# Theme: ${name}
-# Inherit a built-in (default | study) and override only what you need.
-# Run:  pdf build doc.yaml --theme ${name}   (searched in ./themes by default)
-extends: default
-description: "${name} brand theme"
-
-# logo: assets/${name}-logo.svg     # path is relative to THIS file; shows in the header
-
-fonts:
-  heading: "Space Grotesk"          # any family on your --font-path (see: pdf fonts)
-  body: "Inter"
-
-color:
-  primary: "#2563eb"                # accents, chart fill, callout borders
-  text: "#111111"
-  # callout: { definition: { bg: "#eef2ff", border: "#6366f1" } }
-
-# page: { paper: "us-letter", margin: "2cm" }
-`;
+function cmdNew(flags: Flags) {
+  const name = asString(flags.template) ?? "freeform";
+  const starter = STARTERS[name];
+  if (!starter) fail(`new: no starter for "${name}". Try: ${Object.keys(STARTERS).join(", ")}`);
+  emitContent(toYaml(starter), flags);
+}
 
 function cmdThemeInit(flags: Flags) {
-  const name = (flags._ as string[])[2];
+  const name = flags.positionals[2];
   if (!name) fail("theme init: missing <name>.  e.g. pdf theme init acme --out themes/acme.yaml");
-  const content = THEME_STARTER(name);
-  const dest = str(flags.out);
-  if (dest) {
-    writeFileSync(dest, content, "utf8");
-    if (flags.json) ok({ path: dest });
-    else process.stdout.write(`Wrote ${dest}\n`);
-  } else {
-    if (flags.json) ok({ content });
-    else process.stdout.write(content);
-  }
+  emitContent(themeInitTemplate(name), flags);
 }
 
 function cmdFonts(flags: Flags) {
   const typst = resolveTypst();
   if (!typst) throw new TypstMissingError(); // main() renders it (json or prose)
-  const fams = listFontFamilies(typst.bin, [bundledFontsDir, ...multi(flags["font-path"])]);
-  if (flags.json) return ok({ fonts: fams });
+  const fams = listFontFamilies(typst.bin, [bundledFontsDir, ...asList(flags["font-path"])]);
+  if (flags.json) return printSuccess({ fonts: fams });
   if (!fams.length) fail("No fonts found.");
   for (const f of fams) process.stdout.write(f + "\n");
 }
 
 function cmdSchema(flags: Flags) {
   const json = JSON.stringify(specJsonSchema(), null, 2);
-  const dest = str(flags.out);
+  const dest = asString(flags.out);
   if (dest) {
     writeFileSync(dest, json + "\n", "utf8");
     process.stdout.write(`Wrote ${dest}\n`);
@@ -382,7 +342,7 @@ function cmdGuide(flags: Flags) {
   };
 
   if (flags.json) {
-    return ok({
+    return printSuccess({
       workflow: GUIDE_WORKFLOW,
       blocks: GUIDE_BLOCKS,
       themes,
@@ -422,7 +382,7 @@ function cmdGuide(flags: Flags) {
 }
 
 function cmdProfile(flags: Flags) {
-  const argv = flags._ as string[];
+  const argv = flags.positionals;
   const sub = argv[1];
   const json = Boolean(flags.json);
   const global = !flags.local; // global by default; --local for project-local
@@ -431,14 +391,14 @@ function cmdProfile(flags: Flags) {
       const name = argv[2];
       if (!name) fail("profile init: missing <name>.  e.g. pdf profile init business");
       const file = writeProfile(name, profileInitTemplate(name), { global });
-      if (json) return ok({ path: file });
+      if (json) return printSuccess({ path: file });
       process.stdout.write(`Wrote ${file}\nEdit it, then: pdf build <file> --profile ${name}\n`);
       return;
     }
     case "list": {
       const def = getDefaultProfile();
       const profiles = listProfiles().map((p) => ({ ...p, default: p.name === def }));
-      if (json) return ok({ profiles, default: def });
+      if (json) return printSuccess({ profiles, default: def });
       if (!profiles.length) {
         process.stdout.write("No profiles yet. Create one: pdf onboard  (or: pdf profile init <name>)\n");
         return;
@@ -451,7 +411,7 @@ function cmdProfile(flags: Flags) {
       if (!name) fail("profile use: missing <name>.");
       loadProfile(name); // validate it exists/parses before setting
       const file = setDefaultProfile(name, { global });
-      if (json) return ok({ default: name, file });
+      if (json) return printSuccess({ default: name, file });
       process.stdout.write(`Default profile set to "${name}" (${file})\n`);
       return;
     }
@@ -459,7 +419,7 @@ function cmdProfile(flags: Flags) {
       const name = argv[2];
       if (!name) fail("profile show: missing <name>.");
       const { profile, file } = loadProfile(name);
-      if (json) return ok({ profile, file });
+      if (json) return printSuccess({ profile, file });
       process.stdout.write(`# ${file}\n${JSON.stringify(profile, null, 2)}\n`);
       return;
     }
@@ -471,34 +431,18 @@ function cmdProfile(flags: Flags) {
 function cmdInit() {
   const file = writeProfile("local", profileInitTemplate("local"), { global: false });
   const sample = "example.yaml";
-  writeFileSync(
-    sample,
-    [
-      "theme: default",
-      "blocks:",
-      "  - { type: heading, level: 1, text: Hello }",
-      "  - { type: text, text: Body with inline math $E = mc^2$. }",
-      "",
-    ].join("\n"),
-    "utf8",
-  );
+  writeFileSync(sample, toYaml(STARTERS.freeform), "utf8");
   process.stdout.write(`Scaffolded a project:\n  ${file}\n  ${sample}\n\nRender it: pdf build ${sample} --png\n`);
 }
 
-function cmdThemes(flags: Flags) {
-  const themes = listThemes();
-  if (flags.json) return ok({ themes });
-  for (const t of themes) process.stdout.write(`${t.name.padEnd(12)} ${t.description}\n`);
-}
-
-function cmdTemplates(flags: Flags) {
-  const templates = listTemplates();
-  if (flags.json) return ok({ templates });
-  for (const t of templates) process.stdout.write(`${t.name.padEnd(12)} ${t.description}\n`);
+/** Shared renderer for the list commands (themes, templates). */
+function cmdList(flags: Flags, key: string, items: { name: string; description: string }[]) {
+  if (flags.json) return printSuccess({ [key]: items });
+  for (const it of items) process.stdout.write(`${it.name.padEnd(12)} ${it.description}\n`);
 }
 
 async function dispatch(flags: Flags) {
-  const argv = flags._ as string[];
+  const argv = flags.positionals;
   const cmd = argv[0];
   switch (cmd) {
     case "build":
@@ -512,9 +456,9 @@ async function dispatch(flags: Flags) {
     case "profile":
       return cmdProfile(flags);
     case "themes":
-      return cmdThemes(flags);
+      return cmdList(flags, "themes", listThemes());
     case "templates":
-      return cmdTemplates(flags);
+      return cmdList(flags, "templates", listTemplates());
     case "fonts":
       return cmdFonts(flags);
     case "theme":

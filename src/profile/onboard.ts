@@ -84,17 +84,18 @@ export async function runOnboard(): Promise<void> {
     const makeDefault = await yes("Set as your default profile?", true);
 
     // 4. Review, then write (nothing is written until you confirm).
+    const profileYaml = toYaml(profileObject(answers));
     stdout.write(`\nReview:\n`);
     stdout.write(`  profile "${name}" (${kind}, ${global ? "global" : "local"}${makeDefault ? ", default" : ""})\n`);
     if (brand) stdout.write(`  brand theme "${name}" (primary ${brand.primary})\n`);
-    stdout.write("\n" + toYaml(profileObject(answers)).replace(/^/gm, "  ") + "\n");
+    stdout.write("\n" + profileYaml.replace(/^/gm, "  ") + "\n");
     if (!(await yes("Create it?", true))) {
       stdout.write("Cancelled — nothing written.\n");
       return;
     }
 
     const themeFile = brand ? writeThemeFile(name, brandThemeYaml(brand), { global }) : undefined;
-    const profileFile = writeProfile(name, toYaml(profileObject(answers)), { global });
+    const profileFile = writeProfile(name, profileYaml, { global });
     if (makeDefault) setDefaultProfile(name, { global });
 
     stdout.write(`\n✓ Profile "${name}" created${makeDefault ? " (default)" : ""}.\n`);

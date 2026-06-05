@@ -1,8 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
-import { join, dirname, resolve, isAbsolute, basename } from "node:path";
-import { parse as parseYaml } from "yaml";
-import { formatZodError, SpecError } from "../spec/validate.js";
+import { join, dirname, basename } from "node:path";
 import { InputError } from "../diagnostics.js";
+import { findConfigFile, loadConfigFile } from "../util/config-file.js";
 import { ProfileSchema, type Profile } from "./schema.js";
 import { globalConfigDir, localConfigDir, profileSearchDirs, configFiles } from "./paths.js";
 
@@ -13,39 +12,14 @@ export interface LoadedProfile {
   dir: string;
 }
 
-function readProfileFile(file: string): Profile {
-  const raw = readFileSync(file, "utf8");
-  const data = /\.json$/i.test(file) ? JSON.parse(raw) : parseYaml(raw);
-  const result = ProfileSchema.safeParse(data);
-  if (!result.success) {
-    const issues = formatZodError(result.error, data).map((i) => ({ ...i, fix: `${i.fix} (profile ${file})` }));
-    throw new SpecError(issues);
-  }
-  return result.data;
-}
-
-function findProfileFile(name: string): string | null {
-  if (name.includes("/") || /\.(ya?ml|json)$/i.test(name)) {
-    const p = isAbsolute(name) ? name : resolve(name);
-    return existsSync(p) ? p : null;
-  }
-  for (const dir of profileSearchDirs()) {
-    for (const ext of [".yaml", ".yml", ".json"]) {
-      const p = join(dir, name + ext);
-      if (existsSync(p)) return p;
-    }
-  }
-  return null;
-}
-
 /** Resolve a profile by name (searched local→global) or by file path. */
 export function loadProfile(name: string): LoadedProfile {
-  const file = findProfileFile(name);
+  const file = findConfigFile(name, profileSearchDirs());
   if (!file) {
     const dirs = profileSearchDirs().join(", ");
     throw new InputError(`Unknown profile "${name}". Searched: ${dirs}. Create one with: pdf profile init ${name}`);
   }
-  return { profile: readProfileFile(file), file, dir: dirname(file) };
+  return { profile: loadConfigFile(file, ProfileSchema, "profile"), file, dir: dirname(file) };
 }
 
 export interface ProfileEntry {
@@ -72,16 +46,21 @@ export function listProfiles(): ProfileEntry[] {
   return out;
 }
 
+/** Read a JSON config file, tolerating missing/malformed files (→ {}). */
+function readConfig(file: string): Record<string, unknown> {
+  if (!existsSync(file)) return {};
+  try {
+    return JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
 /** The configured default profile name (local config wins), or null. */
 export function getDefaultProfile(): string | null {
-  for (const f of configFiles()) {
-    if (!existsSync(f)) continue;
-    try {
-      const cfg = JSON.parse(readFileSync(f, "utf8"));
-      if (typeof cfg.defaultProfile === "string") return cfg.defaultProfile;
-    } catch {
-      /* ignore malformed config */
-    }
+  for (const file of configFiles()) {
+    const value = readConfig(file).defaultProfile;
+    if (typeof value === "string") return value;
   }
   return null;
 }
@@ -95,37 +74,27 @@ export function setDefaultProfile(name: string | null, opts: { global?: boolean 
   const dir = configDir(opts.global ?? true);
   mkdirSync(dir, { recursive: true });
   const file = join(dir, "config.json");
-  let cfg: Record<string, unknown> = {};
-  if (existsSync(file)) {
-    try {
-      cfg = JSON.parse(readFileSync(file, "utf8"));
-    } catch {
-      /* overwrite malformed */
-    }
-  }
+  const cfg = readConfig(file);
   if (name === null) delete cfg.defaultProfile;
   else cfg.defaultProfile = name;
   writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n", "utf8");
   return file;
 }
 
-/** Write a profile file into the local/global profiles dir; returns its path. */
-export function writeProfile(name: string, yamlContent: string, opts: { global?: boolean } = {}): string {
-  const dir = join(configDir(opts.global ?? true), "profiles");
+/** Write a config file (profile or theme) into the local/global config tree. */
+function writeConfigFile(kind: "profiles" | "themes", name: string, yamlContent: string, opts: { global?: boolean }): string {
+  const dir = join(configDir(opts.global ?? true), kind);
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `${name}.yaml`);
   writeFileSync(file, yamlContent, "utf8");
   return file;
 }
 
-/** Write a brand theme file into the local/global themes dir; returns its path. */
-export function writeThemeFile(name: string, yamlContent: string, opts: { global?: boolean } = {}): string {
-  const dir = join(configDir(opts.global ?? true), "themes");
-  mkdirSync(dir, { recursive: true });
-  const file = join(dir, `${name}.yaml`);
-  writeFileSync(file, yamlContent, "utf8");
-  return file;
-}
+export const writeProfile = (name: string, yaml: string, opts: { global?: boolean } = {}) =>
+  writeConfigFile("profiles", name, yaml, opts);
+
+export const writeThemeFile = (name: string, yaml: string, opts: { global?: boolean } = {}) =>
+  writeConfigFile("themes", name, yaml, opts);
 
 /** Strip a path/extension to a bare profile name (for `--profile ./x.yaml`). */
 export function profileNameOf(nameOrPath: string): string {

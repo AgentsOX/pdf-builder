@@ -19,7 +19,7 @@ export interface ProfileApplication {
  */
 export function applyProfile(spec: unknown, loaded: LoadedProfile): ProfileApplication {
   const { profile, dir } = loaded;
-  const themesDir = [resolve(dir, "..", "themes"), ...themeSearchDirs(), resolve("themes")];
+  const themesDir = [...new Set([resolve(dir, "..", "themes"), ...themeSearchDirs(), resolve("themes")])];
   const fontPaths = (profile.fontPaths ?? []).map((p) => (isAbsolute(p) ? p : resolve(dir, p)));
   const out = profile.out ? (isAbsolute(profile.out) ? profile.out : resolve(dir, profile.out)) : undefined;
 

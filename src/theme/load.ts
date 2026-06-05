@@ -1,10 +1,8 @@
 import { z } from "zod";
-import { readFileSync, existsSync } from "node:fs";
-import { dirname, resolve, isAbsolute, join } from "node:path";
-import { parse as parseYaml } from "yaml";
-import { formatZodError, SpecError } from "../spec/validate.js";
+import { dirname, resolve, isAbsolute } from "node:path";
 import { InputError } from "../diagnostics.js";
 import { deepMerge } from "../util/merge.js";
+import { findConfigFile, loadConfigFile } from "../util/config-file.js";
 import type { ThemeTokens } from "./types.js";
 import { defaultTheme } from "./default.js";
 import { studyTheme } from "./study.js";
@@ -59,32 +57,6 @@ const ThemePatchSchema = z
 
 export type ThemePatch = z.infer<typeof ThemePatchSchema>;
 
-function findThemeFile(name: string, dirs: string[]): string | null {
-  // Explicit path (has separator or extension).
-  if (name.includes("/") || /\.(ya?ml|json)$/i.test(name)) {
-    const p = isAbsolute(name) ? name : resolve(name);
-    return existsSync(p) ? p : null;
-  }
-  for (const dir of dirs) {
-    for (const ext of [".yaml", ".yml", ".json"]) {
-      const p = join(dir, name + ext);
-      if (existsSync(p)) return p;
-    }
-  }
-  return null;
-}
-
-function readThemePatch(file: string): ThemePatch {
-  const raw = readFileSync(file, "utf8");
-  const data = /\.json$/i.test(file) ? JSON.parse(raw) : parseYaml(raw);
-  const result = ThemePatchSchema.safeParse(data);
-  if (!result.success) {
-    const issues = formatZodError(result.error, data).map((i) => ({ ...i, fix: `${i.fix} (theme file ${file})` }));
-    throw new SpecError(issues);
-  }
-  return result.data;
-}
-
 export interface ThemeLoadOptions {
   /** Directories to search for `--theme <name>`. Default ["./themes"]. */
   themesDir?: string[];
@@ -99,7 +71,7 @@ export function loadTheme(name: string, opts: ThemeLoadOptions = {}, seen: strin
   if (BUILTIN_THEMES[name]) return BUILTIN_THEMES[name];
 
   const dirs = opts.themesDir ?? [resolve("themes")];
-  const file = findThemeFile(name, dirs);
+  const file = findConfigFile(name, dirs);
   if (!file) {
     throw new InputError(
       `Unknown theme "${name}". Built-ins: ${Object.keys(BUILTIN_THEMES).join(", ")}. ` +
@@ -108,7 +80,7 @@ export function loadTheme(name: string, opts: ThemeLoadOptions = {}, seen: strin
   }
   if (seen.includes(file)) throw new Error(`Theme "extends" cycle: ${[...seen, file].join(" → ")}`);
 
-  const patch = readThemePatch(file);
+  const patch = loadConfigFile(file, ThemePatchSchema, "theme file");
   const parent = patch.extends
     ? loadTheme(patch.extends, { themesDir: [dirname(file), ...dirs] }, [...seen, file])
     : defaultTheme;
