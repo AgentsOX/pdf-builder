@@ -258,11 +258,13 @@ async function cmdFontsAdd(flags: Flags) {
 function cmdSchema(flags: Flags) {
   const schema = specJsonSchema();
   const dest = asString(flags.out);
-  if (dest) {
-    writeFileSync(dest, JSON.stringify(schema, null, 2) + "\n", "utf8");
-    return flags.json ? printSuccess({ path: dest }) : void process.stdout.write(`Wrote ${dest}\n`);
+  if (!dest) {
+    printJson(schema); // the schema is itself the JSON payload — emit it raw, not wrapped
+    return;
   }
-  printJson(schema); // the schema is itself the JSON payload — emit it raw, not wrapped
+  writeFileSync(dest, JSON.stringify(schema, null, 2) + "\n", "utf8");
+  if (flags.json) printSuccess({ path: dest });
+  else process.stdout.write(`Wrote ${dest}\n`);
 }
 
 // --- pdf guide: everything an agent needs, self-describing -------------------
