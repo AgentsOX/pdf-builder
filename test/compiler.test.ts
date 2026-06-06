@@ -141,6 +141,18 @@ describe("inline links", () => {
   });
 });
 
+describe("spacer", () => {
+  it("emits a fixed gap by default", () => {
+    const { typst } = compile([{ type: "spacer", size: "2cm" }]);
+    expect(typst).toContain("#v(2cm)");
+  });
+
+  it("emits a flexible 1fr fill when flex is set", () => {
+    const { typst } = compile([{ type: "spacer", flex: true }]);
+    expect(typst).toContain("#v(1fr)");
+  });
+});
+
 describe("block alignment", () => {
   it("wraps a centered heading in #align(center)", () => {
     const { typst } = compile([{ type: "heading", level: 1, text: "Title", align: "center" }]);

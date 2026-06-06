@@ -308,7 +308,7 @@ const GUIDE_BLOCKS = [
   "columns — children: [[blocks],[blocks]] side by side",
   "sidebar — a full-height rail (side: left|right, width?, children); theme owns its fill/text color. One per document, among the top-level blocks (e.g. a CV contact column).",
   "callout — kind: definition|theorem|tip|note, with title + body blocks",
-  "spacer / pagebreak — spacing and page breaks",
+  "spacer / pagebreak — spacing (size, or flex: true to fill leftover page height) and page breaks",
   "header / footer — page furniture (logo, text, pageNumbers)",
 ];
 
