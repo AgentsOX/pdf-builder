@@ -6,6 +6,47 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **`sidebar` block** — a full-height colored side rail (left or right) for layouts like a
+  CV contact column. The block carries only `side`/`width`/`children`; the theme owns the
+  rail's `fill` and `text` color. Drawn as a repeating page background, so the band shows on
+  every page while the main content flows and paginates normally.
+- **Heading accent color + rules** — new optional theme tokens `heading.color` and
+  `heading.rule` (which levels get an underline rule). Default and study themes are
+  unchanged (headings still use the text color with no rule).
+- **Inline links** — `[label](url)` in any text becomes a clickable Typst link for
+  `http(s)`/`mailto` URLs; other schemes render literally (never executed).
+- **Inline emphasis** — `**bold**` and `_italic_` in any text (semantic strong/emph; the
+  theme owns how they look). Italic underscores must be on word boundaries, so `snake_case`
+  and `file_name` are untouched. Composes with math and links (`[**bold**](url)`, `**$x$**`).
+- **`cv` built-in theme** — a résumé look (navy side rail, ruled accent section headings,
+  tight one-page spacing) plus an `examples/cv.yaml` golden.
+- Theme files (`extends:`) can now override `heading`, `sidebar`, and `space.line`
+  (paragraph leading).
+
+### Changed (theme tokens)
+- New `stroke` theme token (`hairline`, `accent`, `radius`) replaces the hardcoded
+  rule/table/callout line weights and corner radius in the engine, so a theme owns those
+  too. Built-in themes keep the previous values, so output is unchanged.
+
+### Changed (theme spacing model)
+- Spacing is now a **two-tier scale** (design-token style): a theme defines primitive steps
+  `space.scale` (`xs…xl`) and points semantic roles at them — `block`, `gutter`, `inset`,
+  and a new `edge` (safe-area padding between content and a colored fill). Every gap/padding
+  resolves to a step, so spacing is harmonious by construction and there are no ad-hoc
+  lengths in layout. The sidebar's padding/gap now come from `edge`/`gutter` rather than
+  bespoke `sidebar.inset`/`gap` (both removed). Theme files set steps (e.g. `block: sm`),
+  not raw lengths.
+
+### Fixed / hardened
+- Sidebar content no longer bleeds to the page edge: the rail's headings, rules, and
+  bullets all share one `inset` (a safe-area padding), and `sidebar.gap` now separates the
+  rail from the main column independently of that padding.
+- Heading-rule styling is theme-tunable (`heading.rule.weight/gap/color`) instead of
+  hardcoded constants in the engine — the magic-number class that caused the edge bleed.
+- A too-tall sidebar now fails with a clear `{ path, expected, got, fix }` issue at build
+  time instead of silently clipping (the rail is placed on page 1 only).
+
 ## [0.2.1] — 2026-06-05
 
 ### Added

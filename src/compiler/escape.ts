@@ -47,12 +47,16 @@ export function displayMath(src: string, syntax: MathSyntax): string {
   return syntax === "latex" ? `#mitex(${rawArg(src)})` : `$ ${src} $`;
 }
 
+/** Markdown-style inline link: `[label](url)`. */
+const LINK = /\[([^\]]+)\]\(([^)]+)\)/g;
+/** Only these URL schemes become clickable links; anything else stays literal. */
+const SAFE_URL = /^(https?:|mailto:)/i;
+
 /**
- * Emit inline content: split on `$...$` math spans, escape the prose, and route
- * each math span through the active syntax. So "rate is $\\Delta$ today" keeps
- * the equation (as LaTeX or Typst) but escapes the surrounding words.
+ * Escape prose and route `$...$` math spans through the active syntax. So
+ * "rate is $\\Delta$ today" keeps the equation but escapes the surrounding words.
  */
-export function emitInline(text: string, mathSyntax: MathSyntax = "typst"): string {
+function emitMathAware(text: string, mathSyntax: MathSyntax): string {
   const parts = text.split(/(\$[^$]*\$)/g);
   return parts
     .map((p) =>
@@ -61,6 +65,72 @@ export function emitInline(text: string, mathSyntax: MathSyntax = "typst"): stri
         : escapeText(p),
     )
     .join("");
+}
+
+/**
+ * Markdown emphasis: `**bold**` and `_italic_`. These are *semantic* (strong /
+ * emphasized) — the theme still owns how bold/italic actually look. The italic
+ * underscores must sit on word boundaries (`(?<!\w)…(?!\w)`) so `snake_case` and
+ * `file_name` are left alone; bold uses the unambiguous double-star.
+ */
+const EMPHASIS = /\*\*([^*]+)\*\*|(?<!\w)_([^_]+)_(?!\w)/g;
+
+/**
+ * Split `text` on `regex`, render each match through `match` and the prose
+ * between matches through `gap`, then join. The shared skeleton for every inline
+ * layer (links, emphasis): each layer differs only in its regex and the two
+ * callbacks, and chains to the next by what it passes as `gap`.
+ */
+function rewriteSpans(
+  text: string,
+  regex: RegExp,
+  gap: (s: string) => string,
+  match: (m: RegExpMatchArray) => string,
+): string {
+  const out: string[] = [];
+  let last = 0;
+  for (const m of text.matchAll(regex)) {
+    const start = m.index ?? 0;
+    if (start > last) out.push(gap(text.slice(last, start)));
+    out.push(match(m));
+    last = start + m[0].length;
+  }
+  if (last < text.length) out.push(gap(text.slice(last)));
+  return out.join("");
+}
+
+/**
+ * Render emphasis spans, with their inner text still escaped + math-aware, then
+ * wrap each in Typst strong (`*…*`) or emph (`_…_`).
+ */
+function emitEmphasis(text: string, mathSyntax: MathSyntax): string {
+  return rewriteSpans(
+    text,
+    EMPHASIS,
+    (s) => emitMathAware(s, mathSyntax),
+    (m) => (m[1] !== undefined ? `*${emitMathAware(m[1], mathSyntax)}*` : `_${emitMathAware(m[2], mathSyntax)}_`),
+  );
+}
+
+/**
+ * Emit inline content. First peels off markdown links `[label](url)` — safe
+ * (http/https/mailto) URLs become Typst `#link`s, anything else is left literal
+ * — then applies emphasis (`**bold**` / `_italic_`), escapes prose, and renders
+ * inline math in what remains. The layers nest, so `[**bold**](url)` and
+ * `**$E=mc^2$**` both work.
+ */
+export function emitInline(text: string, mathSyntax: MathSyntax = "typst"): string {
+  return rewriteSpans(
+    text,
+    LINK,
+    (s) => emitEmphasis(s, mathSyntax),
+    (m) => {
+      const [full, label, url] = m;
+      return SAFE_URL.test(url.trim())
+        ? `#link(${strLit(url.trim())})[${emitEmphasis(label, mathSyntax)}]`
+        : emitEmphasis(full, mathSyntax);
+    },
+  );
 }
 
 /** True if a text fragment contains an inline math span. */

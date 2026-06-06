@@ -27,7 +27,14 @@ export const studyTheme: ThemeTokens = {
       note: { bg: "#f1f5f9", border: "#475569" },
     },
   },
-  space: { block: "0.7em", gutter: "18pt", inset: "9pt" },
+  stroke: { hairline: "0.5pt", accent: "3pt", radius: "4pt" },
+  space: {
+    scale: { xs: "4pt", sm: "8pt", md: "12pt", lg: "16pt", xl: "24pt" },
+    block: "sm",
+    gutter: "lg",
+    inset: "md",
+    edge: "xl",
+  },
   dir: "ltr",
   lang: "en",
 };

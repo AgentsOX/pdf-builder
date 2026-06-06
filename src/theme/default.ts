@@ -1,6 +1,17 @@
 import type { ThemeTokens } from "./types.js";
 
 /**
+ * Neutral light rail, used by the default theme and as the fallback when a theme
+ * defines no `sidebar` of its own. Single-sourced here so the compiler never
+ * hardcodes its own copy.
+ */
+export const DEFAULT_SIDEBAR: NonNullable<ThemeTokens["sidebar"]> = {
+  fill: "#f1f5f9",
+  text: "#1a1a1f",
+  width: "6cm",
+};
+
+/**
  * Neutral, professional default. Uses Typst's embedded Libertinus Serif so it
  * renders with zero external font files; add fonts under fonts/ to override.
  */
@@ -26,7 +37,18 @@ export const defaultTheme: ThemeTokens = {
       note: { bg: "#f1f5f9", border: "#64748b" },
     },
   },
-  space: { block: "0.8em", gutter: "16pt", inset: "8pt" },
+  stroke: { hairline: "0.5pt", accent: "3pt", radius: "4pt" },
+  space: {
+    scale: { xs: "4pt", sm: "8pt", md: "12pt", lg: "16pt", xl: "24pt" },
+    block: "sm",
+    gutter: "lg",
+    inset: "sm",
+    edge: "xl",
+  },
+  // Neutral light rail, so the `sidebar` block works on the plain theme too.
+  // (Heading color/rules are intentionally unset here: default headings keep
+  // using `color.text` with no rule, unchanged from before.)
+  sidebar: DEFAULT_SIDEBAR,
   dir: "ltr",
   lang: "en",
 };

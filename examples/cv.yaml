@@ -1,0 +1,107 @@
+# A résumé: a colored side rail (Contact / Skills / …) plus a main flow.
+# The `cv` theme owns the rail color, accent headings, and ruled sections —
+# the spec only carries content. Build: pdf build examples/cv.yaml --png
+theme: cv
+lang: en
+blocks:
+  # The side rail. One sidebar block; side defaults to left. Its colors come
+  # from the theme, never from here. Set `side: right` to mirror it.
+  - type: sidebar
+    side: left
+    children:
+      - type: heading
+        level: 2
+        text: Contact
+      - type: list
+        items:
+          - "054-753-1306"
+          - "nadav@example.com"
+          - "[LinkedIn: Nadav Oxenberg](https://www.linkedin.com/in/nadav-oxenberg)"
+      - type: heading
+        level: 2
+        text: Expertise
+      - type: list
+        items:
+          - Python
+          - AI & LLM Integration
+      - type: heading
+        level: 2
+        text: Languages
+      - type: list
+        items:
+          - English
+          - Hebrew
+      - type: heading
+        level: 2
+        text: Awards
+      - type: list
+        items:
+          - "1st Place — State Comptroller Hackathon (2023)"
+          - "National Record — Javelin Throw (Under-16)"
+
+  # Main flow.
+  - type: heading
+    level: 1
+    text: Nadav Oxenberg
+  - type: text
+    text: Software Engineer
+  - type: heading
+    level: 2
+    text: About me
+  - type: text
+    text: >-
+      Software Engineer specializing in infrastructure, verification, and
+      AI-powered developer tooling. I build internal systems that improve
+      reliability and engineering velocity, bridging automation with
+      AI-assisted workflows (LangChain, LangGraph, OpenAI API).
+  - type: heading
+    level: 2
+    text: Experience
+  - type: columns
+    ratios: [1, 2]
+    children:
+      -
+        - type: text
+          text: "2025 – now"
+        - type: text
+          text: Nvidia
+      -
+        - type: heading
+          level: 3
+          text: Software Engineer
+        - type: list
+          items:
+            - Architect and maintain infrastructure and verification tools used by large-scale engineering teams.
+            - Build AI-assisted automation workflows that improve system reliability and developer efficiency.
+            - Lead adoption of AI developer tools, establishing team-wide guidelines and best practices.
+  - type: columns
+    ratios: [1, 2]
+    children:
+      -
+        - type: text
+          text: "2023 – 2025"
+        - type: text
+          text: Samsung
+      -
+        - type: heading
+          level: 3
+          text: Software Engineer
+        - type: list
+          items:
+            - Created scalable infrastructure for algorithm developers, enhancing image processing.
+            - Implemented CI/CD caching, reducing test execution time by ~80%.
+  - type: heading
+    level: 2
+    text: Education
+  - type: columns
+    ratios: [1, 2]
+    children:
+      -
+        - type: text
+          text: Bar Ilan University
+      -
+        - type: heading
+          level: 3
+          text: Bachelor of Computer Science
+        - type: text
+          text: "GPA: 86"

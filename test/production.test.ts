@@ -74,6 +74,13 @@ describe.skipIf(!hasTypst())("production renders (showcase)", () => {
     expect(r.warnings).toHaveLength(0);
   });
 
+  it("renders the CV (side rail, ruled headings, link) on one page, no warnings", () => {
+    const r = render("cv");
+    expect(existsSync(r.pdfPath)).toBe(true);
+    expect(r.manifest.pages).toBe(1);
+    expect(r.warnings).toHaveLength(0);
+  });
+
   it("manifest carries deterministic content hashes + schemaVersion", () => {
     const a = build(loadExample("invoice"), { out: OUT, basename: "hash-a" });
     const b = build(loadExample("invoice"), { out: OUT, basename: "hash-b" });
