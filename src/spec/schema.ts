@@ -27,7 +27,7 @@ export type Block =
   | { type: "columns"; ratios?: number[]; children: Block[][] }
   | { type: "sidebar"; side?: "left" | "right"; width?: string; children: Block[] }
   | { type: "callout"; kind: CalloutKind; title?: string; body: Block[] }
-  | { type: "spacer"; size?: string }
+  | { type: "spacer"; size?: string; flex?: boolean }
   | { type: "pagebreak" }
   | { type: "header"; text?: string; logo?: string }
   | { type: "footer"; text?: string; pageNumbers?: boolean };
@@ -167,10 +167,14 @@ const CalloutBlock = z
 const SpacerBlock = z
   .object({
     type: z.literal("spacer"),
-    size: z.string().describe("Vertical gap, e.g. `1cm` or `2em`.").optional(),
+    size: z.string().describe("Fixed vertical gap, e.g. `1cm` or `2em`.").optional(),
+    flex: z
+      .boolean()
+      .describe("Expand to fill the leftover vertical space (like flex-grow). Several flex spacers split it equally — use to push content apart or balance a short page. Ignores `size`.")
+      .optional(),
   })
   .strict()
-  .describe("Vertical whitespace.");
+  .describe("Vertical whitespace: a fixed gap, or `flex: true` to fill remaining page height.");
 
 const PageBreakBlock = z.object({ type: z.literal("pagebreak") }).strict().describe("Force a new page.");
 

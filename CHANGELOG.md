@@ -6,7 +6,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-06-06
+
 ### Added
+- **Flexible spacer** — `spacer` with `flex: true` expands to fill the leftover vertical
+  space (Typst `1fr`); several split it equally. Lets a short page be balanced/distributed
+  instead of crammed at the top.
 - **Block alignment** — `align: left | center | right` on `heading`, `text`, and `list`
   (alongside the existing `dir`), e.g. a centered title or a right-aligned line.
 - **Heading letter-spacing** — a `heading.tracking` theme token (e.g. `0.2em`) for

@@ -198,7 +198,7 @@ function emitBlock(block: Block, ctx: Ctx, path: string, depth: number): string 
     }
 
     case "spacer":
-      return `#v(${block.size ?? ctx.space.block})`;
+      return block.flex ? `#v(1fr)` : `#v(${block.size ?? ctx.space.block})`;
 
     case "pagebreak":
       return `#pagebreak()`;
