@@ -51,13 +51,16 @@ blocks:
     rows: [["Acme", "$1,200"], ["Globex", "$900"]]
 ```
 
-The full set of blocks: `heading`, `text` (with inline `$…$` math), `list`, `table`, `kv`, `math`, `chart`, `image`, `columns`, `callout`, `spacer`, `pagebreak`, `header`, `footer`. It's deliberately small, so it fits in your head (or an agent's context window).
+The full set of blocks: `heading`, `text` (with inline `$…$` math, `[label](url)` links, `**bold**`, and `_italic_`), `list`, `table`, `kv`, `math`, `chart`, `image`, `columns`, `sidebar`, `callout`, `spacer`, `pagebreak`, `header`, `footer`. It's deliberately small, so it fits in your head (or an agent's context window).
 
 ## What it handles
 
 - **LaTeX math** like `\frac{d}{dx}`, `\int_a^b`, `\vec{F}`. It's the default; set `math: typst` for native Typst math. A copy of [mitex](https://github.com/mitex-rs/mitex) is bundled, so there's no first-run download and the output stays stable.
 - **Right-to-left and mixed scripts.** Set `dir: rtl` and `lang` on the document or any block. Hebrew, English, and numbers on one line resolve correctly, and a Hebrew font (David Libre) ships in the package.
 - **Charts** (bar, line, pie) via a bundled [cetz](https://github.com/cetz-package/cetz), drawn in your brand color.
+- **Side rails.** A `sidebar` block draws a full-height colored column (left or right) for things like a CV's contact panel. The block carries only the content and side; the theme owns the rail's fill and text color.
+- **Links.** Write `[label](url)` in any text; `http(s)`/`mailto` become clickable, anything else stays literal.
+- **Inline emphasis.** `**bold**` and `_italic_` in any text — semantic, so the theme still owns how bold/italic look. Intraword underscores (`snake_case`, `file_name`) are left alone.
 - **Errors instead of bad PDFs.** Unknown keys, ragged tables, missing images, unavailable fonts — each comes back as `{ path, expected, got, fix }`. You won't get a wrong-but-plausible document.
 - **A JSON Schema** (`pdf schema`) for validation and editor autocomplete on spec files.
 
@@ -82,6 +85,18 @@ pdf build report.yaml --theme acme --font-path ./brand-fonts     # bring your ow
 ```
 
 Switch `--theme` and the same spec re-renders in a different brand.
+
+Spacing is a small **scale** the theme owns, so gaps stay harmonious and content never sits against a colored edge. A theme defines primitive steps and points named roles at them — specs and agents never set lengths:
+
+```yaml
+extends: default
+space:
+  scale: { xs: 4pt, sm: 8pt, md: 12pt, lg: 16pt, xl: 24pt }
+  block: sm     # gap between blocks
+  gutter: lg    # gap between columns / rail ↔ main
+  inset: sm     # padding in callouts/tables
+  edge: xl      # safe-area: content ↔ a fill (page/sidebar) edge
+```
 
 ## Profiles
 
@@ -122,6 +137,7 @@ Each renders with `pdf build examples/<name>.yaml --png`:
 | `physics-cheatsheet.yaml` | dense formula sheet |
 | `recipe.yaml` | columns and lists |
 | `report.yaml` | kv rows, a bar chart, tables, callouts |
+| `cv.yaml` | `cv` theme: a side rail, ruled accent headings, a link |
 
 ## Install
 

@@ -1,6 +1,9 @@
 import type { Block, MathSyntax } from "../spec/schema.js";
 import type { ThemeTokens } from "../theme/types.js";
 import { themePreamble } from "../theme/preamble.js";
+import type { SidebarSetup } from "../theme/preamble.js";
+import { resolveSpace } from "../theme/space.js";
+import { DEFAULT_SIDEBAR } from "../theme/default.js";
 import { MITEX_IMPORT, CETZ_IMPORT } from "../packages.js";
 import type { Issue } from "../spec/validate.js";
 import { emitInline, displayMath, hasInlineMath, strLit, rgb } from "./escape.js";
@@ -8,13 +11,23 @@ import { resolveAsset } from "./assets.js";
 
 type HeaderBlock = Extract<Block, { type: "header" }>;
 type FooterBlock = Extract<Block, { type: "footer" }>;
+type SidebarBlock = Extract<Block, { type: "sidebar" }>;
 
 const MAX_DEPTH = 8;
+/**
+ * Sentinel emitted by the sidebar's compile-time overflow assert. The rail is
+ * `place`d (single page), so if its content is taller than the page it would
+ * clip silently — instead we fail the compile with this marker, which the
+ * pipeline turns into a clean, actionable issue. Keep in sync with pipeline.ts.
+ */
+export const SIDEBAR_OVERFLOW_SENTINEL = "PDFBUILDER_SIDEBAR_OVERFLOW";
 /** cetz plot canvas size (width, height) in cetz units — shared by line and bar charts. */
 const CHART_SIZE = "(12, 6)";
 
 interface Ctx {
   theme: ThemeTokens;
+  /** Theme spacing roles resolved to lengths. */
+  space: ReturnType<typeof resolveSpace>;
   warnings: Issue[];
   /** Document-default math syntax. */
   math: MathSyntax;
@@ -155,7 +168,20 @@ function emitBlock(block: Block, ctx: Ctx, path: string, depth: number): string 
       const cells = block.children
         .map((col, i) => content(emitBlocks(col, ctx, `${path}.children[${i}]`, depth + 1)))
         .join(",\n  ");
-      return `#grid(\n  columns: (${cols}),\n  gutter: ${theme.space.gutter},\n  ${cells},\n)`;
+      return `#grid(\n  columns: (${cols}),\n  gutter: ${ctx.space.gutter},\n  ${cells},\n)`;
+    }
+
+    case "sidebar": {
+      // A sidebar is page-level; compileDocument lifts the first top-level one
+      // into the page layout. Reaching here means it was nested — warn and fall
+      // back to rendering its children inline so nothing is silently dropped.
+      ctx.warnings.push({
+        path,
+        expected: "a top-level sidebar block",
+        got: "a nested sidebar",
+        fix: "Move the sidebar to the document's top-level blocks (one per document).",
+      });
+      return emitBlocks(block.children, ctx, `${path}.children`, depth + 1);
     }
 
     case "callout": {
@@ -167,7 +193,7 @@ function emitBlock(block: Block, ctx: Ctx, path: string, depth: number): string 
     }
 
     case "spacer":
-      return `#v(${block.size ?? theme.space.block})`;
+      return `#v(${block.size ?? ctx.space.block})`;
 
     case "pagebreak":
       return `#pagebreak()`;
@@ -205,6 +231,9 @@ function needsMitex(blocks: Block[], docMath: MathSyntax): boolean {
       case "columns":
         if (b.children.some((col) => needsMitex(col, docMath))) return true;
         break;
+      case "sidebar":
+        if (needsMitex(b.children, docMath)) return true;
+        break;
       case "callout":
         if (needsMitex(b.body, docMath)) return true;
         break;
@@ -220,9 +249,11 @@ function needsCetz(blocks: Block[]): boolean {
       ? true
       : b.type === "columns"
         ? b.children.some(needsCetz)
-        : b.type === "callout"
-          ? needsCetz(b.body)
-          : false,
+        : b.type === "sidebar"
+          ? needsCetz(b.children)
+          : b.type === "callout"
+            ? needsCetz(b.body)
+            : false,
   );
 }
 
@@ -250,11 +281,23 @@ export interface CompileResult {
  */
 export function compileDocument(blocks: Block[], theme: ThemeTokens, opts: CompileOptions = {}): CompileResult {
   const math: MathSyntax = opts.math ?? "latex";
-  const ctx: Ctx = { theme, warnings: [], math, assetBase: opts.assetBase, assets: [] };
+  const ctx: Ctx = { theme, space: resolveSpace(theme), warnings: [], math, assetBase: opts.assetBase, assets: [] };
 
   let header = blocks.find((b): b is HeaderBlock => b.type === "header");
   const footer = blocks.find((b): b is FooterBlock => b.type === "footer");
-  const flow = blocks.filter((b) => b.type !== "header" && b.type !== "footer");
+  // The first top-level sidebar becomes a page-level rail; any extra is ignored
+  // with a warning (a document has one rail).
+  const sidebars = blocks.filter((b): b is SidebarBlock => b.type === "sidebar");
+  const sidebar = sidebars[0];
+  if (sidebars.length > 1) {
+    ctx.warnings.push({
+      path: "blocks",
+      expected: "one sidebar block",
+      got: `${sidebars.length} sidebars`,
+      fix: "Keep a single sidebar; merge the rest of its content into the main flow.",
+    });
+  }
+  const flow = blocks.filter((b) => b.type !== "header" && b.type !== "footer" && b.type !== "sidebar");
 
   // Resolve + existence-check the header logo (block logo, else theme logo).
   if (header && opts.assetBase) {
@@ -285,8 +328,47 @@ export function compileDocument(blocks: Block[], theme: ThemeTokens, opts: Compi
     .filter(Boolean)
     .join("\n");
   const importLine = imports ? imports + "\n" : "";
-  const preamble = themePreamble(theme, { header, footer, dir: opts.dir, lang: opts.lang, math });
-  const body = flow.map((b, i) => emitBlock(b, ctx, `blocks[${i}]`, 0)).join("\n\n");
+  // Resolve sidebar geometry/colors: the block carries only side/width (layout),
+  // the theme owns the colors. Fall back to neutral values if a theme predates
+  // sidebar support, so the block still works on any theme.
+  const sidebarTheme = theme.sidebar ?? DEFAULT_SIDEBAR;
+  // The rail's safe-area padding and its gap to the main column are spacing
+  // roles, not bespoke sidebar values — so they stay on the theme's scale.
+  const edge = ctx.space.edge;
+  const gap = ctx.space.gutter;
+  const side: "left" | "right" = sidebar?.side ?? "left";
+  const width = sidebar?.width ?? sidebarTheme.width;
+  const sidebarSetup: SidebarSetup | undefined = sidebar ? { side, width, fill: sidebarTheme.fill } : undefined;
+
+  const preamble = themePreamble(theme, { header, footer, dir: opts.dir, lang: opts.lang, math, sidebar: sidebarSetup, space: ctx.space });
+
+  const mainBody = flow.map((b, i) => emitBlock(b, ctx, `blocks[${i}]`, 0)).join("\n\n");
+  let body: string;
+  if (sidebar) {
+    const railInner = emitBlocks(sidebar.children, ctx, "sidebar.children", 1);
+    // The main flow lives in the (margin-inset) body; the rail content is placed
+    // into the band beside it, in the theme's sidebar text color (headings too)
+    // so it reads on the fill. `place` keeps it off the main flow, so the main
+    // content paginates normally across pages while the band repeats.
+    //
+    // The rail content box is the `edge` safe-area padding from the band's edges
+    // on every side, so headings, rules, and bullets all share one left edge and
+    // nothing bleeds to the page edge. The main column sits at margin
+    // `width + gap`; we shift the box back from there to land its near edge at
+    // `edge`. dx(left) = edge - width - gap;  dx(right) = width + gap - edge.
+    const dx = side === "right" ? `(${width} + ${gap} - ${edge})` : `(${edge} - ${width} - ${gap})`;
+    const railFill = rgb(sidebarTheme.text);
+    const railBox = `box(width: ${width} - 2 * ${edge})[\n#set text(fill: ${railFill})\n#show heading: set text(fill: ${railFill})\n${railInner}\n]`;
+    // The rail is placed on the first page only; guard against silently clipping
+    // content taller than the page (top/bottom margins are the `edge` padding).
+    const overflowGuard = `#context {
+  let _railHeight = measure(${railBox}).height
+  assert(_railHeight <= page.height - ${edge} - ${edge}, message: "${SIDEBAR_OVERFLOW_SENTINEL}")
+}`;
+    body = `${overflowGuard}\n#place(top + ${side}, dx: ${dx}, dy: 0pt, ${railBox})\n${mainBody}`;
+  } else {
+    body = mainBody;
+  }
 
   return {
     typst: `${importLine}${preamble}\n${body}\n`,

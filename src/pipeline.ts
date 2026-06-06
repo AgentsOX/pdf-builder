@@ -8,7 +8,7 @@ import { SCHEMA_VERSION } from "./spec/schema.js";
 import { parseSpec, parseData, SpecError, type Issue } from "./spec/validate.js";
 import { getTemplate } from "./templates/index.js";
 import { getTheme, type ThemeTokens } from "./theme/index.js";
-import { compileDocument } from "./compiler/index.js";
+import { compileDocument, SIDEBAR_OVERFLOW_SENTINEL } from "./compiler/index.js";
 import { loadProfile, profileNameOf } from "./profile/load.js";
 import { applyProfile } from "./profile/apply.js";
 import {
@@ -20,6 +20,7 @@ import {
   listFontFamilies,
   ALLOWED_PDF_STANDARDS,
   TypstMissingError,
+  TypstCompileError,
 } from "./typst.js";
 
 export interface BuildOptions {
@@ -256,15 +257,33 @@ export function build(spec: unknown, opts: BuildOptions = {}): BuildResult {
 
   // compileToPdf throws TypstCompileError on failure (e.g. PDF/A conformance) —
   // propagated to the caller. Never a silent blank PDF.
-  const { stderr } = compileToPdf({
-    bin: typst.bin,
-    input: typPath,
-    output: pdfPath,
-    root,
-    fontPaths,
-    packagePath,
-    pdfStandard: eff.pdfStandard,
-  });
+  let stderr: string;
+  try {
+    ({ stderr } = compileToPdf({
+      bin: typst.bin,
+      input: typPath,
+      output: pdfPath,
+      root,
+      fontPaths,
+      packagePath,
+      pdfStandard: eff.pdfStandard,
+    }));
+  } catch (err) {
+    // Turn the sidebar overflow assert into a clean, actionable issue rather
+    // than a raw Typst stack — the rail is placed (page 1 only), so taller
+    // content would clip silently.
+    if (err instanceof TypstCompileError && err.stderr.includes(SIDEBAR_OVERFLOW_SENTINEL)) {
+      throw new SpecError([
+        {
+          path: "blocks (sidebar)",
+          expected: "sidebar content that fits the page height",
+          got: "a rail taller than one page (it would be clipped)",
+          fix: "Shorten the sidebar (fewer/shorter items), reduce the theme's base font size, or move content into the main column.",
+        },
+      ]);
+    }
+    throw err;
+  }
   warnings.push(...parseTypstStderr(stderr));
 
   // Per-page PNGs for the visual feedback loop.

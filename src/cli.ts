@@ -298,7 +298,7 @@ const GUIDE_WORKFLOW = [
 
 const GUIDE_BLOCKS = [
   "heading — section title (level 1-4)",
-  "text — paragraph; inline LaTeX math inside $…$",
+  "text — paragraph; inline LaTeX math inside $…$, links as [label](url), **bold**, _italic_",
   "list — bullets, or ordered: true",
   "table — header + rows (string cells)",
   "kv — label→value rows (e.g. totals); emphasis: true to bold",
@@ -306,6 +306,7 @@ const GUIDE_BLOCKS = [
   "chart — kind: bar|line|pie, data: [{label,value}]",
   "image — src (relative to cwd), width, alt",
   "columns — children: [[blocks],[blocks]] side by side",
+  "sidebar — a full-height rail (side: left|right, width?, children); theme owns its fill/text color. One per document, among the top-level blocks (e.g. a CV contact column).",
   "callout — kind: definition|theorem|tip|note, with title + body blocks",
   "spacer / pagebreak — spacing and page breaks",
   "header / footer — page furniture (logo, text, pageNumbers)",
@@ -337,6 +338,10 @@ const GUIDE_RECIPES = [
   {
     name: "Study sheet / math notes",
     how: "Freeform with math blocks and inline $…$ LaTeX; theme: study; callouts for definitions/theorems.",
+  },
+  {
+    name: "Résumé / CV",
+    how: "Freeform with `theme: cv`. Put the contact column (Contact, Skills, Languages, …) in ONE `sidebar` block (side: left|right) at the top of `blocks`; put name/About/Experience/Education in the main flow after it. Use level-2 headings for sections (they get accent rules), level-3 for job/degree titles, and `columns` (ratios: [1,2]) for date-vs-detail rows. Add links as [LinkedIn](https://…). The rail's colors come from the theme — never set them in the spec. Build with --png and check the image fits one page; if not, trim wording (don't fight the layout).",
   },
 ];
 

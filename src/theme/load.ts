@@ -6,13 +6,16 @@ import { findConfigFile, loadConfigFile } from "../util/config-file.js";
 import type { ThemeTokens } from "./types.js";
 import { defaultTheme } from "./default.js";
 import { studyTheme } from "./study.js";
+import { cvTheme } from "./cv.js";
 
 export const BUILTIN_THEMES: Record<string, ThemeTokens> = {
   default: defaultTheme,
   study: studyTheme,
+  cv: cvTheme,
 };
 
 const CalloutColorPatch = z.object({ bg: z.string(), border: z.string() }).partial().strict();
+const SpaceStepSchema = z.enum(["xs", "sm", "md", "lg", "xl"]);
 
 /**
  * A theme FILE: any subset of ThemeTokens (deep-partial), plus `extends` to
@@ -48,7 +51,33 @@ const ThemePatchSchema = z
       })
       .partial()
       .strict(),
-    space: z.object({ block: z.string(), gutter: z.string(), inset: z.string() }).partial().strict(),
+    stroke: z.object({ hairline: z.string(), accent: z.string(), radius: z.string() }).partial().strict(),
+    space: z
+      .object({
+        scale: z.object({ xs: z.string(), sm: z.string(), md: z.string(), lg: z.string(), xl: z.string() }).partial().strict(),
+        block: SpaceStepSchema,
+        gutter: SpaceStepSchema,
+        inset: SpaceStepSchema,
+        edge: SpaceStepSchema,
+        line: z.string(),
+      })
+      .partial()
+      .strict(),
+    heading: z
+      .object({
+        color: z.string(),
+        rule: z
+          .object({
+            levels: z.array(z.number().int().min(1).max(4)),
+            weight: z.string().optional(),
+            gap: z.string().optional(),
+            color: z.string().optional(),
+          })
+          .strict(),
+      })
+      .partial()
+      .strict(),
+    sidebar: z.object({ fill: z.string(), text: z.string(), width: z.string() }).partial().strict(),
     dir: z.enum(["ltr", "rtl"]),
     lang: z.string(),
   })

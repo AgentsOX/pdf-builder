@@ -25,6 +25,7 @@ export type Block =
   | { type: "chart"; kind: "bar" | "line" | "pie"; title?: string; data: { label: string; value: number }[] }
   | { type: "image"; src: string; width?: string; alt?: string }
   | { type: "columns"; ratios?: number[]; children: Block[][] }
+  | { type: "sidebar"; side?: "left" | "right"; width?: string; children: Block[] }
   | { type: "callout"; kind: CalloutKind; title?: string; body: Block[] }
   | { type: "spacer"; size?: string }
   | { type: "pagebreak" }
@@ -139,6 +140,16 @@ const ColumnsBlock = z
   .strict()
   .describe("Side-by-side columns, each holding its own blocks.");
 
+const SidebarBlock = z
+  .object({
+    type: z.literal("sidebar"),
+    side: z.enum(["left", "right"]).describe("Which edge the rail sits on; defaults to left.").optional(),
+    width: z.string().describe("Rail width, e.g. `6.5cm` or `30%`. Defaults to the theme's sidebar width.").optional(),
+    children: z.array(z.lazy(() => BlockSchema)).min(1).describe("Blocks rendered inside the sidebar rail."),
+  })
+  .strict()
+  .describe("A full-height side rail (e.g. a CV contact column). The theme owns its fill and text color; one per document, placed among the top-level blocks.");
+
 const CalloutBlock = z
   .object({
     type: z.literal("callout"),
@@ -188,6 +199,7 @@ export const BlockSchema: z.ZodType<Block> = z.lazy(() =>
     ChartBlock,
     ImageBlock,
     ColumnsBlock,
+    SidebarBlock,
     CalloutBlock,
     SpacerBlock,
     PageBreakBlock,
