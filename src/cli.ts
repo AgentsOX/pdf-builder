@@ -297,9 +297,9 @@ const GUIDE_WORKFLOW = [
 ];
 
 const GUIDE_BLOCKS = [
-  "heading — section title (level 1-4)",
-  "text — paragraph; inline LaTeX math inside $…$, links as [label](url), **bold**, _italic_",
-  "list — bullets, or ordered: true",
+  "heading — section title (level 1-4); align: left|center|right",
+  "text — paragraph; inline LaTeX math inside $…$, links as [label](url), **bold**, _italic_; align: left|center|right",
+  "list — bullets, or ordered: true; align: left|center|right",
   "table — header + rows (string cells)",
   "kv — label→value rows (e.g. totals); emphasis: true to bold",
   "math — display equation (LaTeX by default; syntax: typst to switch)",

@@ -141,6 +141,36 @@ describe("inline links", () => {
   });
 });
 
+describe("block alignment", () => {
+  it("wraps a centered heading in #align(center)", () => {
+    const { typst } = compile([{ type: "heading", level: 1, text: "Title", align: "center" }]);
+    expect(typst).toContain("#align(center)[= Title]");
+  });
+
+  it("wraps right-aligned text", () => {
+    const { typst } = compile([{ type: "text", text: "x", align: "right" }]);
+    expect(typst).toContain("#align(right)[x]");
+  });
+
+  it("leaves unaligned blocks unwrapped (left default, byte-stable)", () => {
+    const { typst } = compile([{ type: "text", text: "plain" }]);
+    expect(typst).not.toContain("#align(");
+  });
+});
+
+describe("heading letter-spacing (theme tracking token)", () => {
+  it("adds tracking to the heading show-rule when the theme sets it", () => {
+    const tracked = { ...getTheme("default"), heading: { tracking: "0.25em" } };
+    const { typst } = compileDocument([{ type: "heading", level: 2, text: "Caps" }], tracked);
+    expect(typst).toContain("tracking: 0.25em");
+  });
+
+  it("omits tracking by default", () => {
+    const { typst } = compile([{ type: "heading", level: 2, text: "Caps" }]);
+    expect(typst).not.toContain("tracking:");
+  });
+});
+
 describe("inline emphasis", () => {
   it("renders **bold** as Typst strong", () => {
     expect(emitInline("a **strong** b", "typst")).toContain("*strong*");

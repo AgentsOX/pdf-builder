@@ -16,9 +16,9 @@ export type Dir = "ltr" | "rtl";
 export type MathSyntax = "latex" | "typst";
 
 export type Block =
-  | { type: "heading"; level?: number; text: string; dir?: Dir }
-  | { type: "text"; text: string; dir?: Dir }
-  | { type: "list"; ordered?: boolean; items: string[]; dir?: Dir }
+  | { type: "heading"; level?: number; text: string; dir?: Dir; align?: Align }
+  | { type: "text"; text: string; dir?: Dir; align?: Align }
+  | { type: "list"; ordered?: boolean; items: string[]; dir?: Dir; align?: Align }
   | { type: "table"; header?: string[]; rows: string[][]; align?: Align[] }
   | { type: "kv"; rows: { label: string; value: string; emphasis?: boolean }[] }
   | { type: "math"; tex: string; syntax?: MathSyntax }
@@ -33,6 +33,7 @@ export type Block =
   | { type: "footer"; text?: string; pageNumbers?: boolean };
 
 const dirField = z.enum(["ltr", "rtl"]).describe("Text direction; overrides the document default for this block.").optional();
+const alignField = z.enum(["left", "center", "right"]).describe("Horizontal alignment of this block; defaults to left.").optional();
 
 const HeadingBlock = z
   .object({
@@ -40,6 +41,7 @@ const HeadingBlock = z
     level: z.number().int().min(1).max(4).describe("Heading level 1–4 (1 = largest / document title).").optional(),
     text: z.string().describe("Heading text."),
     dir: dirField,
+    align: alignField,
   })
   .strict()
   .describe("A section title.");
@@ -49,6 +51,7 @@ const TextBlock = z
     type: z.literal("text"),
     text: z.string().describe("Paragraph text. Inline math goes inside `$…$` (LaTeX by default)."),
     dir: dirField,
+    align: alignField,
   })
   .strict()
   .describe("A paragraph of body text.");
@@ -59,6 +62,7 @@ const ListBlock = z
     ordered: z.boolean().describe("Numbered list when true; bulleted when omitted.").optional(),
     items: z.array(z.string()).min(1).describe("List items; each may contain inline `$…$` math."),
     dir: dirField,
+    align: alignField,
   })
   .strict()
   .describe("A bulleted or numbered list.");

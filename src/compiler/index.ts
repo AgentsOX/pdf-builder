@@ -45,6 +45,11 @@ function withDir(s: string, dir?: "ltr" | "rtl"): string {
   return dir ? `#text(dir: ${dir})[${s}]` : s;
 }
 
+/** Wrap a block in a horizontal alignment when it sets one (left is the default). */
+function withAlign(s: string, align?: "left" | "center" | "right"): string {
+  return align ? `#align(${align})[${s}]` : s;
+}
+
 function emitBlocks(blocks: Block[], ctx: Ctx, path: string, depth: number): string {
   return blocks.map((b, i) => emitBlock(b, ctx, `${path}[${i}]`, depth)).join("\n\n");
 }
@@ -64,16 +69,16 @@ function emitBlock(block: Block, ctx: Ctx, path: string, depth: number): string 
   switch (block.type) {
     case "heading": {
       const level = block.level ?? 1;
-      return `${"=".repeat(level)} ${withDir(emitInline(block.text, math), block.dir)}`;
+      return withAlign(`${"=".repeat(level)} ${withDir(emitInline(block.text, math), block.dir)}`, block.align);
     }
 
     case "text":
-      return withDir(emitInline(block.text, math), block.dir);
+      return withAlign(withDir(emitInline(block.text, math), block.dir), block.align);
 
     case "list": {
       const marker = block.ordered ? "+" : "-";
       const body = block.items.map((it) => `${marker} ${emitInline(it, math)}`).join("\n");
-      return withDir(body, block.dir);
+      return withAlign(withDir(body, block.dir), block.align);
     }
 
     case "table": {
