@@ -25,6 +25,10 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: GitHub Release
-        run: gh release create "${{ github.ref_name }}" --title "${{ github.ref_name }}" --generate-notes
+        # Idempotent: only create the release if it doesn't already exist, so a
+        # re-run (or a manually-created release) can't fail the workflow.
+        run: |
+          gh release view "${{ github.ref_name }}" >/dev/null 2>&1 \
+            || gh release create "${{ github.ref_name }}" --title "${{ github.ref_name }}" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
