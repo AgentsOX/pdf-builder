@@ -7,6 +7,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Block alignment** — `align: left | center | right` on `heading`, `text`, and `list`
+  (alongside the existing `dir`), e.g. a centered title or a right-aligned line.
+- **Heading letter-spacing** — a `heading.tracking` theme token (e.g. `0.2em`) for
+  tracked-caps headings; theme-owned, so the spec never sets it.
 - **`sidebar` block** — a full-height colored side rail (left or right) for layouts like a
   CV contact column. The block carries only `side`/`width`/`children`; the theme owns the
   rail's `fill` and `text` color. Drawn as a repeating page background, so the band shows on

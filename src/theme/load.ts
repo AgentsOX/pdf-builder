@@ -66,6 +66,7 @@ const ThemePatchSchema = z
     heading: z
       .object({
         color: z.string(),
+        tracking: z.string(),
         rule: z
           .object({
             levels: z.array(z.number().int().min(1).max(4)),

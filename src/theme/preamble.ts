@@ -95,6 +95,7 @@ export function themePreamble(
   // underline rules on chosen levels. Both default off, so plain themes are
   // byte-identical to before.
   const headingColor = t.heading?.color ?? t.color.text;
+  const headingTracking = t.heading?.tracking ? `, tracking: ${t.heading.tracking}` : "";
   const ruleCfg = t.heading?.rule;
   const ruleLevels = ruleCfg?.levels ?? [];
   const ruleWeight = ruleCfg?.weight ?? DEFAULT_RULE_WEIGHT;
@@ -122,7 +123,7 @@ export function themePreamble(
 )
 #set par(justify: true, leading: ${sp.line})
 #set heading(numbering: none)
-#show heading: set text(font: ${fontList(t.fonts.heading)}, fill: ${rgb(headingColor)})
+#show heading: set text(font: ${fontList(t.fonts.heading)}, fill: ${rgb(headingColor)}${headingTracking})
 ${headingRules}
 #show raw: set text(font: ${fontList(t.fonts.mono)})
 #set table(stroke: ${t.stroke.hairline} + ${rgb(t.color.border)}, inset: ${sp.inset}, align: left + horizon)

@@ -61,6 +61,8 @@ The full set of blocks: `heading`, `text` (with inline `$…$` math, `[label](ur
 - **Side rails.** A `sidebar` block draws a full-height colored column (left or right) for things like a CV's contact panel. The block carries only the content and side; the theme owns the rail's fill and text color.
 - **Links.** Write `[label](url)` in any text; `http(s)`/`mailto` become clickable, anything else stays literal.
 - **Inline emphasis.** `**bold**` and `_italic_` in any text — semantic, so the theme still owns how bold/italic look. Intraword underscores (`snake_case`, `file_name`) are left alone.
+- **Alignment.** `align: left | center | right` on a `heading`, `text`, or `list` — e.g. a centered title. (Text *direction* is separate: `dir: ltr | rtl`.)
+- **Letter-spacing.** A theme can space out headings (`heading.tracking`, e.g. `0.2em`) for tracked-caps titles — the theme owns it, not the spec.
 - **Errors instead of bad PDFs.** Unknown keys, ragged tables, missing images, unavailable fonts — each comes back as `{ path, expected, got, fix }`. You won't get a wrong-but-plausible document.
 - **A JSON Schema** (`pdf schema`) for validation and editor autocomplete on spec files.
 

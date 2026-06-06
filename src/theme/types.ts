@@ -86,6 +86,8 @@ export interface ThemeTokens {
   heading?: {
     /** Heading color (hex). Defaults to `color.text`. */
     color?: string;
+    /** Letter-spacing added between heading characters (Typst length, e.g. `0.2em`). */
+    tracking?: string;
     /**
      * Underline rule beneath headings. `levels` chooses which (1–4); the rest
      * are styling tokens with sensible defaults, so the look is theme-tunable
